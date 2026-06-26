@@ -2,6 +2,40 @@ import math
 from math2 import *
 
 
+def get_adjacent_walls_for_pocket(pocket, ptype, table_width, table_height):
+    """
+    Return the set of wall names that are physically adjacent (attached) to
+    the given pocket.
+
+    Rules (billiard physics):
+      - Corner pockets have TWO adjacent walls – the side wall and the end
+        wall that meet at that corner.
+      - Mid (side) pockets have ONE adjacent wall – the long rail the pocket
+        sits on.
+
+    For a 1-cushion shot these walls are INVALID because the rebounding ball
+    would strike the pocket jaw instead of entering cleanly.  For 2+ cushion
+    shots this restriction does NOT apply.
+    """
+    px, py = pocket
+    invalid = set()
+
+    # Which long rail is the pocket on?
+    if py < table_height / 2:
+        invalid.add('top')
+    else:
+        invalid.add('bottom')
+
+    # Corner pockets also involve the nearest side rail
+    if ptype == 'corner':
+        if px < table_width / 2:
+            invalid.add('left')
+        else:
+            invalid.add('right')
+
+    return invalid
+
+
 def distance_point_to_segment(px, py, x1, y1, x2, y2):
     dx = x2 - x1
     dy = y2 - y1
@@ -452,6 +486,16 @@ def ball_cushion_paths_n(cue_ball, balls, team_type, mid_pockets, corner_pockets
                         valid = False
                         break
 
+                    # For a single-cushion shot the bounce wall must NOT be
+                    # adjacent to the target pocket (that would clip the jaw).
+                    # Multi-cushion shots are exempt because the ball first
+                    # hits a far cushion before arriving at the pocket rail.
+                    if num_cushions == 1:
+                        adj = get_adjacent_walls_for_pocket(pocket, ptype, table_width, table_height)
+                        if intended_wall in adj:
+                            valid = False
+                            break
+
                     bounce_points.append(hit)
                     current_start = hit
 
@@ -583,6 +627,16 @@ def cue_cushion_paths_n(cue_ball, balls, team_type, mid_pockets, corner_pockets,
                     if any(dist(hit, p) < ball_radius * 3 for p in pockets_2):
                         valid = False
                         break
+
+                    # For a single-cushion cue-kick shot the cue bounce wall
+                    # must NOT be adjacent to the target pocket.  The cue
+                    # arriving from the pocket's own cushion would clip the jaw
+                    # and result in a foul.  Multi-cushion shots are exempt.
+                    if num_cushions == 1:
+                        adj = get_adjacent_walls_for_pocket(pocket, ptype, table_width, table_height)
+                        if intended_wall in adj:
+                            valid = False
+                            break
 
                     bounce_points.append(hit)
                     current_start = hit

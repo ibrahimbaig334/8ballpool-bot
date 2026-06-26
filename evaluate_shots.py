@@ -29,6 +29,37 @@ def evaluate_result(balls_data, pocketed, first_hit_id, team_len):
         score += compute_all_balls_pottable(balls_data, team_len, pocketed, POCKETS, valid_grid) * ((action[7] + 1) * 5)
         score += compute_balls_away_from_walls(balls_data, team_len, pocketed) * ((action[8] + 1) * 5)
         return score
+def evaluate_result_cushion(balls_data, pocketed, team_len):
+    """
+    Relaxed evaluator for deliberate cue-cushion (kick) shots.
+    The cue ball intentionally hits the cushion/wall before touching the target
+    ball, so 'hit_team_first' is skipped.  Only the following fouls still
+    disqualify the shot:
+      - cue ball pocketed (scratch)
+      - black ball pocketed while team balls remain
+      - no team ball was pocketed at all
+    Scoring uses the same position-quality metrics as the standard evaluator.
+    """
+    from simulation_use import POCKETS
+    score = 0
+    cue_pocketed = any((b['id'] == (-2) for b in pocketed))
+    black_pocketed = any((b['id'] == (-1) for b in pocketed))
+    if team_len == 0:
+        team_pocketed = any((b['id'] == (-1) for b in pocketed))
+    else:
+        team_pocketed = any((0 <= b['id'] < team_len for b in pocketed))
+    if cue_pocketed or (black_pocketed and team_len > 0) or (not team_pocketed):
+        return (-9999)
+    else:
+        score += compute_openness(balls_data, team_len, POCKETS, pocketed) * ((action[2] + 1) * 5)
+        score += compute_openness_cue(balls_data, team_len, pocketed) * ((action[3] + 1) * 5)
+        score += compute_openness_cue2(balls_data, team_len, pocketed, POCKETS) * ((action[4] + 1) * 5)
+        score += calculate_avg_nearest_neighbor_dist(balls_data, team_len, pocketed) * ((action[5] + 1) * 5)
+        valid_grid = get_valid_cue_grid(balls_data, pocketed)
+        score += compute_grid_potting_coverage(balls_data, team_len, pocketed, POCKETS, valid_grid) * ((action[6] + 1) * 5)
+        score += compute_all_balls_pottable(balls_data, team_len, pocketed, POCKETS, valid_grid) * ((action[7] + 1) * 5)
+        score += compute_balls_away_from_walls(balls_data, team_len, pocketed) * ((action[8] + 1) * 5)
+        return score
 def _build_cue_grid():
     """\n    Returns all 21 (x, y) grid positions before any overlap filtering.\n    Inset from every wall by 2 x ball_radius.\n    """
     inset = ball_radius_ev * 2

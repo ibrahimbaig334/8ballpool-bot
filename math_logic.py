@@ -620,10 +620,15 @@ def delete_all_balls():
     cue_ball = None
     balls = []
     need_update_draws = True
-def score_single(angle_, power_, cue_ball_, black_ball_, team_balls_, opp_balls_):
+def score_single(angle_, power_, cue_ball_, black_ball_, team_balls_, opp_balls_, cue_cushion_mode=False):
     from simulation_use import POCKETS_SCREEN
     balls_data, pocketed, first_hit_id, cue_hit_wall_first = simulate_shot(cue_ball_, black_ball_, team_balls_, opp_balls_, angle_, power_, get_cue_force(), table_width)
     draw_search(balls_data, pocketed, POCKETS_SCREEN)
+    if cue_cushion_mode and cue_hit_wall_first:
+        # For a deliberate cue-cushion shot the cue hits the wall before the
+        # team ball – skip the "hit team ball first" foul check and only
+        # require that a team ball was actually pocketed without a scratch.
+        return evaluate_shots.evaluate_result_cushion(balls_data, pocketed, len(team_balls_))
     return evaluate_shots.evaluate_result(balls_data, pocketed, first_hit_id, len(team_balls_))
 def find_shot_stripe():
     find_shot_x('stripe')
@@ -631,16 +636,18 @@ def find_shot_solid():
     find_shot_x('solid')
 def find_shot_black():
     find_shot_x('black')
-def _best_from_angles(angles, cue_ball_, black_, team_balls_, opp_balls_):
+def _best_from_angles(angles, cue_ball_, black_, team_balls_, opp_balls_, cue_cushion_mode=False):
     """
     Score every candidate aim angle and return the (angle, power, score)
     triple with the highest robust score strictly above 0 (i.e. a shot that
     genuinely pocketed a team ball without a foul).  Returns None when no
     angle succeeds so the caller can fall through to the next priority tier.
+    cue_cushion_mode=True is forwarded to the evaluator so that cue-wall-first
+    shots are not rejected by the hit_team_first foul check.
     """
     best = None
     for angle in angles:
-        result = angle_score_best_power(angle, cue_ball_, black_, team_balls_, opp_balls_)
+        result = angle_score_best_power(angle, cue_ball_, black_, team_balls_, opp_balls_, cue_cushion_mode=cue_cushion_mode)
         if result[0] is None:
             continue
         if result[2] > 0 and (best is None or result[2] > best[2]):
@@ -725,7 +732,8 @@ def find_shot_x(ball_type_x):
                 table_width, table_height, ball_radius, n_cush)
             if ccp:
                 result = _best_from_angles(
-                    [p[0] for p in ccp], cue_ball[0], black, team_balls, opp_balls)
+                    [p[0] for p in ccp], cue_ball[0], black, team_balls, opp_balls,
+                    cue_cushion_mode=True)
                 if result is not None:
                     best_shot = result
                     break
@@ -736,7 +744,7 @@ def find_shot_x(ball_type_x):
         need_update_draws = True
         from tk_window import _refresh_sliders
         _refresh_sliders()
-def angle_score_best_power(angle_, cue_ball_, black_, team_balls_, opp_balls_):
+def angle_score_best_power(angle_, cue_ball_, black_, team_balls_, opp_balls_, cue_cushion_mode=False):
     """
     Sweep 21 power levels (0.00 – 1.00) and find the one with the best
     neighbourhood-robust score.  Returns (angle, power, score) only when the
@@ -744,13 +752,15 @@ def angle_score_best_power(angle_, cue_ball_, black_, team_balls_, opp_balls_):
     a legitimately pocketed team ball without any foul.  If every power level
     produced an invalid simulation (-9999: scratch, wrong first ball, nothing
     pocketed), returns (None, None, -999999) so callers can safely skip it.
+    cue_cushion_mode=True relaxes the "hit team ball first" constraint so that
+    cue-cushion (kick) shots are evaluated correctly.
     """
     action = [(-0.5001966165614263), (-0.27094216647114566)]
     powers = np.arange(0.0, 1.01, 0.05)
     neighborhood_size = int((action[0] + 1) * 4)
     power_scores = []
     for power in powers:
-        score_ = score_single(angle_, power, cue_ball_, black_, team_balls_, opp_balls_)
+        score_ = score_single(angle_, power, cue_ball_, black_, team_balls_, opp_balls_, cue_cushion_mode=cue_cushion_mode)
         power_scores.append(score_)
     best_local = (None, None, (-999999))
     for i, power in enumerate(powers):
