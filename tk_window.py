@@ -1,8 +1,3 @@
-# Decompiled with PyLingual (https://pylingual.io)
-# Internal filename: 'tk_window.py'
-# Bytecode version: 3.9.0beta5 (3425)
-# Source timestamp: 1970-01-01 00:00:00 UTC (0)
-
 global slider_power
 global button_table_geo_lock
 global _lock_btn_ref
@@ -24,7 +19,6 @@ global cue_settings_window
 global _active_line_count
 global ct
 global slider_scroll_sens_direction
-global inter
 global slider_cue_start_var
 global game_version_var
 global slider_ct_var
@@ -616,74 +610,8 @@ def close_():
     os._exit(1)
 def callback():
     os._exit(1)
-def call_back2():
-    if inter == 0:
-        os._exit(1)
-    else:
-        l_win.destroy()
-def _attach_context_menu(ctk_entry, parent_window):
-    inner = ctk_entry._entry
-    menu = tk.Menu(parent_window, tearoff=0, bg='#2b2d3a', fg=TEXT, activebackground=ACCENT, activeforeground='white', borderwidth=0, relief='flat', font=('Segoe UI', 11))
-    menu.add_command(label='  Cut', command=lambda: inner.event_generate('<<Cut>>'))
-    menu.add_command(label='  Copy', command=lambda: inner.event_generate('<<Copy>>'))
-    menu.add_command(label='  Paste', command=lambda: inner.event_generate('<<Paste>>'))
-    menu.add_separator()
-    menu.add_command(label='  Select all', command=lambda: (inner.select_range(0, 'end'), inner.icursor('end')))
-    def show(event):
-        try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
-    inner.bind('<Button-3>', show)
-    inner.bind('<Button-2>', show)
-key_save = ''
-key_tr = 0
-def check_key():
-    global key_save
-    global inter
-    global key_tr
-    global buttons_win_opened
-    
-    # 1. Prevent double-opening
-    if buttons_win_opened:
-        return None
-    
-    # 2. Visual feedback (optional, but makes it feel like the original app)
-    submit_btn.configure(text='Bypassing...', state='disabled')
-    submit_btn.update()
-    
-    # 3. Force the security constants
-    # We set these manually because the rest of the app uses them for math/logic
-    buttons_win_opened = True
-    inter = 152 * math.pi
-    key_tr = 0.112
-    key_save = entry.get() if entry.get() else "Bypass_Active"
-
-    # 4. Save the "Authorized" state to the local JSON file
-    # This ensures the app remembers you are 'validated' next time you open it
-    try:
-        data_ = _current_data()
-        data_['transparency'] = 0.112
-        data_['save'] = key_save
-        with open(save_data_name, 'w') as f:
-            json.dump(data_, f)
-    except Exception:
-        pass # Skip if saving fails
-
-    # 5. Update the button to show success
-    submit_btn.configure(text='✓  Access Granted', state='normal')
-    
-    # 6. Launch the core application logic
-    # This is the original sequence of events for a successful login
-    l_win.destroy() # Close the login window
-    create_buttons_window() # Open the Ruler UI
-    
-    _start_keyboard_listener()
-    canvas.after(250, update_window)
-    canvas.after(250, _keep_overlay_topmost)
-    canvas.after(80, _poll_kb_queue)
-    
-    print("Bypass active: Logic initialized.")
+key_save = 'Bypass_Active'
+key_tr = 0.112
 def create_keys_window():
     global can_open_keybinds
     if not can_open_keybinds:
@@ -1115,7 +1043,7 @@ def create_buttons_window():
 if __name__ == '__main__':
     pass
 else:
-    inter = 0.0
+
     _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'indicate_power': False}
     if not os.path.exists(save_data_name):
         with open(save_data_name, 'w') as f:
@@ -1181,53 +1109,10 @@ else:
             print('click-through setup failed:', e)
     window.after(100, _apply_click_through)
     import splash_screen
-    splash_screen.update(92, 'Building login window...')
-    l_win = ctk.CTkToplevel()
-    l_win.title('Login')
-    l_win.after(201, lambda: l_win.iconbitmap(resource_path('s.ico')))
-    l_win.attributes('-topmost', 1)
-    l_win.resizable(False, False)
-    l_win.configure(fg_color=BG)
-    body = ctk.CTkFrame(l_win, fg_color=BG, corner_radius=0)
-    body.pack(fill='both', expand=True, padx=40, pady=18)
-    ctk.CTkLabel(body, text='Enter your key', font=ctk.CTkFont('Segoe UI', 20, 'bold'), text_color=TEXT).pack(pady=(0, 16))
-    entry = ctk.CTkEntry(body, width=380, height=40, font=ctk.CTkFont('Consolas', 13), fg_color=BG3, border_color=BORDER, text_color=TEXT, corner_radius=8, placeholder_text='XXXX-XXXX-XXXX-XXXX')
-    entry.pack(pady=(0, 16))
-    _attach_context_menu(entry, l_win)
-    if data.get('transparency') == 0.112:
-        entry.insert(0, data.get('save', ''))
-    submit_btn = ctk.CTkButton(body, text='Submit', width=160, height=40, font=ctk.CTkFont('Segoe UI', 13, 'bold'), fg_color=ACCENT, hover_color=ACCENT2, text_color='white', corner_radius=8, command=check_key)
-    submit_btn.pack(pady=(0, 24))
-    info_row = ctk.CTkFrame(body, fg_color='transparent')
-    info_row.pack(fill='x')
-    ctk.CTkLabel(info_row, text='Key will be rejected if:\n\n  ✗  Invalid\n  ✗  Already used\n  ✗  Expired', font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT2, justify='left').pack(side='left')
-    def open_purchase_window():
-        pw = ctk.CTkToplevel(l_win)
-        pw.title('Purchase a Key')
-        pw.after(201, lambda: pw.iconbitmap(resource_path('s.ico')))
-        pw.attributes('-topmost', 1)
-        pw.geometry('500x290')
-        pw.resizable(False, False)
-        pw.configure(fg_color=BG)
-        body_pw = ctk.CTkFrame(pw, fg_color=BG, corner_radius=0)
-        body_pw.pack(fill='both', expand=True, padx=24, pady=20)
-        ctk.CTkLabel(body_pw, text='Purchase a Key', font=ctk.CTkFont('Segoe UI', 16, 'bold'), text_color=TEXT).pack(pady=(0, 14))
-        sellers = [('PayPal / Crypto', 'https://t.me/H8BPRuler'), ('[EG]  Egypt | @mahmoudmagdy777', 'https://t.me/mahmoudmagdy777'), ('[MA]  Morocco | @H_8bp', 'https://t.me/H_8bp'), ('[BR]  BRAZIL | @Danii8BP', 'https://t.me/Danii8BallPool')]
-        import webbrowser
-        for label, url in sellers:
-            row = ctk.CTkFrame(body_pw, fg_color=BG2, corner_radius=8, height=44)
-            row.pack(fill='x', pady=4)
-            row.pack_propagate(False)
-            ctk.CTkLabel(row, text=label, font=ctk.CTkFont('Segoe UI', 13), text_color=TEXT, anchor='w').pack(side='left', padx=14)
-            ctk.CTkButton(row, text='Open ↗', width=80, height=28, font=ctk.CTkFont('Segoe UI', 11), fg_color=ACCENT, hover_color=ACCENT2, text_color='white', corner_radius=6, command=lambda u=url: webbrowser.open(u)).pack(side='right', padx=10)
-        def _on_ready_pw():
-            pw.unbind('<Map>')
-            pw.after(100, lambda: (pw.attributes('-topmost', True), pw.lift(), pw.focus_force()))
-            pw.deiconify()
-        pw.update()
-        pw.update_idletasks()
-        pw.after_idle(_on_ready_pw)
-    ctk.CTkButton(info_row, text='🛒  Purchase a key', width=160, height=40, font=ctk.CTkFont('Segoe UI', 12, 'bold'), fg_color=BG3, hover_color=BORDER, text_color=ACCENT2, corner_radius=8, command=open_purchase_window).pack(side='right')
-    l_win.protocol('WM_DELETE_WINDOW', call_back2)
-    import splash_screen
-    splash_screen.update(98, 'Almost ready...')
+    splash_screen.update(95, 'Launching app...')
+    buttons_win_opened = True
+    create_buttons_window()
+    _start_keyboard_listener()
+    canvas.after(250, update_window)
+    canvas.after(250, _keep_overlay_topmost)
+    canvas.after(80, _poll_kb_queue)

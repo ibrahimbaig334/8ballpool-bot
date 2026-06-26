@@ -1,8 +1,3 @@
-# Decompiled with PyLingual (https://pylingual.io)
-# Internal filename: 'find_paths.py'
-# Bytecode version: 3.9.0beta5 (3425)
-# Source timestamp: 1970-01-01 00:00:00 UTC (0)
-
 import math
 from math2 import *
 def distance_point_to_segment(px, py, x1, y1, x2, y2):

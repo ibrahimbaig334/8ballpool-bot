@@ -9,8 +9,6 @@ pyautogui
 pynput
 requests
 pywin32
-
-# Common transitive/runtime helpers used by the UI, screenshots, HTTP, and packaging stack.
 pygetwindow
 pymsgbox
 pyperclip
