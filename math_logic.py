@@ -143,7 +143,7 @@ def detect_ball(position_, radius_condition=False):
             if ball_color == 'black':
                 type_ = 'black'
             else:
-                if detected_ball[3]!= 'stripe':
+                if detected_ball[3] != 'stripe':
                     type_ = 'solid'
             balls = [[detected_ball_table[0], detected_ball_table[1], ball_color, detected_ball[2], type_]]
         for ball in old_balls:
@@ -180,7 +180,7 @@ def move_ball_near_mouse():
     if nearest_index == (-1):
         cue_ball = ([x, y], cue_ball[1])
     else:
-        if nearest_index!= (-2):
+        if nearest_index != (-2):
             balls[nearest_index] = (x, y, balls[nearest_index][2], balls[nearest_index][3], balls[nearest_index][4])
     need_update_draws = True
 def delete_ball_near_mouse():
@@ -214,11 +214,11 @@ def delete_ball_near_mouse():
     if nearest_index == (-1):
         cue_ball = None
     else:
-        if nearest_index!= (-2):
+        if nearest_index != (-2):
             old_balls = balls
             balls = []
             for i in range(len(old_balls)):
-                if i!= nearest_index:
+                if i != nearest_index:
                     balls.append(old_balls[i])
     need_update_draws = True
 def get_ball_color(ball_pos):
@@ -361,18 +361,25 @@ def detect_table():
                                 update_radius()
                                 need_update_draws = True
 def draw_power_indicator(indicator_start, indicator_end, power_, line_length, color_start, color_power, draw_line):
-    """\n    Draws:\n    - line at indicator_start\n    - line at indicator_end\n    - moving line between them based on power_ (0-1)\n\n    All lines are parallel and centered on the positions.\n    """
+    """
+    Draws:
+    - line at indicator_start
+    - line at indicator_end
+    - moving line between them based on power_ (0-1)
+
+    All lines are parallel and centered on the positions.
+    """
     x1, y1 = indicator_start
     x2, y2 = indicator_end
     power_ = max(0.0, min(1.0, power_))
     dx = x2 - x1
     dy = y2 - y1
-    dist = math.hypot(dx, dy)
-    if dist == 0:
+    d = math.hypot(dx, dy)
+    if d == 0:
         return None
     else:
-        dx /= dist
-        dy /= dist
+        dx /= d
+        dy /= d
         px = -dy
         py = dx
         half_len = line_length / 2
@@ -485,8 +492,8 @@ def remove_near_contact(merged_circles, contact_circle, min_dist):
         cx, cy = contact_circle
         filtered = []
         for x, y, r in merged_circles:
-            dist = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
-            if dist >= min_dist:
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if d >= min_dist:
                 filtered.append((x, y, r))
         return filtered
 def detect_contact_circle(img):
@@ -509,8 +516,8 @@ def merge_close_circles(circles, merge_dist):
         placed = False
         for cluster in clusters:
             cx, cy, cr, members = cluster
-            dist = math.hypot(x - cx, y - cy)
-            if dist < merge_dist:
+            d = math.hypot(x - cx, y - cy)
+            if d < merge_dist:
                 members.append(c)
                 xs = [m[0] for m in members]
                 ys = [m[1] for m in members]
@@ -647,12 +654,37 @@ def find_shot_x(ball_type_x):
                     if ball[4]:
                         opp_balls.append((ball[0], ball[1]))
         corner_pockets, mid_pockets = get_pockets()
-        direct_paths = find_paths.direct_paths(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
-        for path in direct_paths:
+
+        # ===== STEP 1: Try direct shots =====
+        direct = find_paths.direct_paths(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
+        for path in direct:
             angles.append(path[0])
-        combination_paths = find_paths.combination_paths(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
-        for path in combination_paths:
-            angles.append(path[0])
+
+        # ===== STEP 2: Try combination shots (only if no direct shots found) =====
+        if not angles:
+            combo = find_paths.combination_paths(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
+            for path in combo:
+                angles.append(path[0])
+
+        # ===== STEP 3: Try ball cushion (bank) shots, 1 to 4 cushions =====
+        if not angles:
+            for n_cush in range(1, 5):
+                ball_cush = find_paths.ball_cushion_paths_n(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, table_width, table_height, ball_radius, n_cush)
+                for path in ball_cush:
+                    angles.append(path[0])
+                if angles:
+                    break
+
+        # ===== STEP 4: Try cue cushion (kick) shots, 1 to 4 cushions =====
+        if not angles:
+            for n_cush in range(1, 5):
+                cue_cush = find_paths.cue_cushion_paths_n(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, table_width, table_height, ball_radius, n_cush)
+                for path in cue_cush:
+                    angles.append(path[0])
+                if angles:
+                    break
+
+        # ===== Evaluate all found angles and pick the best =====
         if len(angles) == 0:
             return None
         else:
@@ -663,7 +695,7 @@ def find_shot_x(ball_type_x):
                     angle_results.append(best_local)
             best_shot = (0, 0, (-999999999999))
             for angle_ in angle_results:
-                if angle_[0] > best_shot[2]:
+                if angle_[2] > best_shot[2]:
                     best_shot = angle_
             prediction_angle = best_shot[0]
             power_cue = best_shot[1]
