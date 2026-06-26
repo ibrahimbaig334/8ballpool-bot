@@ -51,6 +51,8 @@ predictions = None
 power_indicator_start = 1000
 power_indicator_end = 1000
 indicate_power = False
+indirect_black = False
+indirect_all   = False
 def update_radius():
     global ball_radius
     ball_radius = table_width * 0.0149625
@@ -627,83 +629,122 @@ def find_shot_stripe():
     find_shot_x('stripe')
 def find_shot_solid():
     find_shot_x('solid')
+def find_shot_black():
+    find_shot_x('black')
+def _best_from_angles(angles, cue_ball_, black_, team_balls_, opp_balls_):
+    """
+    Score every candidate aim angle and return the (angle, power, score)
+    triple with the highest robust score strictly above 0 (i.e. a shot that
+    genuinely pocketed a team ball without a foul).  Returns None when no
+    angle succeeds so the caller can fall through to the next priority tier.
+    """
+    best = None
+    for angle in angles:
+        result = angle_score_best_power(angle, cue_ball_, black_, team_balls_, opp_balls_)
+        if result[0] is None:
+            continue
+        if result[2] > 0 and (best is None or result[2] > best[2]):
+            best = result
+    return best
 def find_shot_x(ball_type_x):
-    global need_update_draws
-    global power_cue
-    global prediction_angle
-    start = time.time()
-    evaluate_shots.TABLE_X_MIN = 0
-    evaluate_shots.TABLE_X_MAX = table_width
-    evaluate_shots.TABLE_Y_MIN = 0
-    evaluate_shots.TABLE_Y_MAX = table_height
+    """
+    Priority cascade:
+      1. Direct shots          (skipped when indirect mode is active)
+      2. Combination shots     (skipped when indirect mode is active)
+      3. Ball-cushion shots    – 1 to 4 cushions
+      4. Cue-cushion shots     – 1 to 4 cushions
+    indirect_all  → skip 1 & 2 for every ball type.
+    indirect_black → skip 1 & 2 only when the target type resolves to 'black'.
+    """
+    global need_update_draws, power_cue, prediction_angle
+    if cue_ball is None:
+        return None
+    evaluate_shots.TABLE_X_MIN    = 0
+    evaluate_shots.TABLE_X_MAX    = table_width
+    evaluate_shots.TABLE_Y_MIN    = 0
+    evaluate_shots.TABLE_Y_MAX    = table_height
     evaluate_shots.ball_radius_ev = ball_radius
-    if cue_ball is not None:
-        angles = []
-        ball_type = 'black'
-        team_balls = []
-        opp_balls = []
-        black = (1000, 1000)
-        for ball in balls:
-            if ball[4] == ball_type_x:
-                ball_type = ball_type_x
-                team_balls.append((ball[0], ball[1]))
-            else:
-                if ball[4] == 'black':
-                    black = (ball[0], ball[1])
-                else:
-                    if ball[4]:
-                        opp_balls.append((ball[0], ball[1]))
-        corner_pockets, mid_pockets = get_pockets()
-
-        # ===== STEP 1: Try direct shots =====
-        direct = find_paths.direct_paths(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
-        for path in direct:
-            angles.append(path[0])
-
-        # ===== STEP 2: Try combination shots (only if no direct shots found) =====
-        if not angles:
-            combo = find_paths.combination_paths(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
-            for path in combo:
-                angles.append(path[0])
-
-        # ===== STEP 3: Try ball cushion (bank) shots, 1 to 4 cushions =====
-        if not angles:
-            for n_cush in range(1, 5):
-                ball_cush = find_paths.ball_cushion_paths_n(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, table_width, table_height, ball_radius, n_cush)
-                for path in ball_cush:
-                    angles.append(path[0])
-                if angles:
+    # ── Categorise balls on the table ────────────────────────────────────────
+    ball_type  = 'black'
+    team_balls = []
+    opp_balls  = []
+    black      = (1000, 1000)
+    for ball in balls:
+        if ball_type_x == 'black' and ball[4] == 'black':
+            black = (ball[0], ball[1])
+        elif ball[4] == ball_type_x:
+            ball_type = ball_type_x
+            team_balls.append((ball[0], ball[1]))
+        elif ball[4] == 'black':
+            black = (ball[0], ball[1])
+        elif ball[4]:
+            opp_balls.append((ball[0], ball[1]))
+    # Bug-3 fix: if none of the requested ball type were detected, bail out.
+    # Without this guard the code falls through and searches for 8-ball shots,
+    # which score positively and overwrite prediction_angle with a losing move.
+    if ball_type != ball_type_x and ball_type != 'black':
+        return None
+    if ball_type == 'black' and black == (1000, 1000):
+        return None
+    corner_pockets, mid_pockets = get_pockets()
+    # ── Determine whether to allow direct / combination shots ─────────────────
+    _is_black_shot  = (ball_type == 'black')
+    _skip_direct    = indirect_all or (indirect_black and _is_black_shot)
+    best_shot = None
+    # ── Priority 1: Direct shots ──────────────────────────────────────────────
+    if not _skip_direct:
+        dp = find_paths.direct_paths(
+            cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
+        if dp:
+            best_shot = _best_from_angles(
+                [p[0] for p in dp], cue_ball[0], black, team_balls, opp_balls)
+    # ── Priority 2: Combination shots ─────────────────────────────────────────
+    if best_shot is None and not _skip_direct:
+        cp = find_paths.combination_paths(
+            cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, ball_radius)
+        if cp:
+            best_shot = _best_from_angles(
+                [p[0] for p in cp], cue_ball[0], black, team_balls, opp_balls)
+    # ── Priority 3: Ball-cushion (bank) shots – 1 to 2 cushions ──────────────
+    if best_shot is None:
+        for n_cush in range(1, 3):
+            bcp = find_paths.ball_cushion_paths_n(
+                cue_ball[0], balls, ball_type, mid_pockets, corner_pockets,
+                table_width, table_height, ball_radius, n_cush)
+            if bcp:
+                result = _best_from_angles(
+                    [p[0] for p in bcp], cue_ball[0], black, team_balls, opp_balls)
+                if result is not None:
+                    best_shot = result
                     break
-
-        # ===== STEP 4: Try cue cushion (kick) shots, 1 to 4 cushions =====
-        if not angles:
-            for n_cush in range(1, 5):
-                cue_cush = find_paths.cue_cushion_paths_n(cue_ball[0], balls, ball_type, mid_pockets, corner_pockets, table_width, table_height, ball_radius, n_cush)
-                for path in cue_cush:
-                    angles.append(path[0])
-                if angles:
+    # ── Priority 4: Cue-cushion (kick) shots – 1 to 2 cushions ───────────────
+    if best_shot is None:
+        for n_cush in range(1, 3):
+            ccp = find_paths.cue_cushion_paths_n(
+                cue_ball[0], balls, ball_type, mid_pockets, corner_pockets,
+                table_width, table_height, ball_radius, n_cush)
+            if ccp:
+                result = _best_from_angles(
+                    [p[0] for p in ccp], cue_ball[0], black, team_balls, opp_balls)
+                if result is not None:
+                    best_shot = result
                     break
-
-        # ===== Evaluate all found angles and pick the best =====
-        if len(angles) == 0:
-            return None
-        else:
-            angle_results = []
-            for angle in angles:
-                best_local = angle_score_best_power(angle, cue_ball[0], black, team_balls, opp_balls)
-                if best_local[0] is not None:
-                    angle_results.append(best_local)
-            best_shot = (0, 0, (-999999999999))
-            for angle_ in angle_results:
-                if angle_[2] > best_shot[2]:
-                    best_shot = angle_
-            prediction_angle = best_shot[0]
-            power_cue = best_shot[1]
-            need_update_draws = True
-            from tk_window import _refresh_sliders
-            _refresh_sliders()
-            end = time.time()
+    # ── Apply the best shot found ─────────────────────────────────────────────
+    if best_shot is not None:
+        prediction_angle  = best_shot[0]
+        power_cue         = best_shot[1]
+        need_update_draws = True
+        from tk_window import _refresh_sliders
+        _refresh_sliders()
 def angle_score_best_power(angle_, cue_ball_, black_, team_balls_, opp_balls_):
+    """
+    Sweep 21 power levels (0.00 – 1.00) and find the one with the best
+    neighbourhood-robust score.  Returns (angle, power, score) only when the
+    best score is strictly > 0, meaning at least one power plateau resulted in
+    a legitimately pocketed team ball without any foul.  If every power level
+    produced an invalid simulation (-9999: scratch, wrong first ball, nothing
+    pocketed), returns (None, None, -999999) so callers can safely skip it.
+    """
     action = [(-0.5001966165614263), (-0.27094216647114566)]
     powers = np.arange(0.0, 1.01, 0.05)
     neighborhood_size = int((action[0] + 1) * 4)
@@ -723,6 +764,10 @@ def angle_score_best_power(angle_, cue_ball_, black_, team_balls_, opp_balls_):
         robust_score = m - (action[1] + 1) * 5 * s
         if robust_score > best_local[2]:
             best_local = (angle_, power, robust_score)
+    # Only return a result when the shot is genuinely valid (score > 0).
+    # This prevents 5%-power / cue-scratch angles from being used.
+    if best_local[2] <= 0:
+        return (None, None, (-999999))
     return best_local
 def update(draw_circle_fn, draw_line_fn):
     global need_update_draws

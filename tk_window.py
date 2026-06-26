@@ -103,6 +103,10 @@ _cue_ind_btn_var = None
 _cue_ind_toggle_btn = None
 _cue_start_coord_var = None
 _cue_end_coord_var = None
+indirect_black_var = None
+indirect_all_var = None
+checkbox_indirect_black = None
+checkbox_indirect_all = None
 KEYBINDS = {
     'auto detect table': ('t', True, 'ml.detect_table'),
     'move window/table': ('g', False, 'ml.on_move_table'),
@@ -450,6 +454,8 @@ def _current_data():
         'power_indicator_start': getattr(ml, 'power_indicator_start', [0.0, 0.0]),
         'power_indicator_end': getattr(ml, 'power_indicator_end', [0.0, 0.0]),
         'indicate_power': getattr(ml, 'indicate_power', False),
+        'indirect_black': ml.indirect_black,
+        'indirect_all': ml.indirect_all,
     }
 def save_():
     with open(save_data_name, 'w') as f:
@@ -486,6 +492,8 @@ def reset():
     ml.power_indicator_start = data.get('power_indicator_start', getattr(ml, 'power_indicator_start', [0.0, 0.0]))
     ml.power_indicator_end = data.get('power_indicator_end', getattr(ml, 'power_indicator_end', [0.0, 0.0]))
     ml.indicate_power = data.get('indicate_power', getattr(ml, 'indicate_power', False))
+    ml.indirect_black = data.get('indirect_black', False)
+    ml.indirect_all = data.get('indirect_all', False)
     if 'keybinds' in data:
         filtered = {k: v for k, v in data['keybinds'].items() if k in KEYBINDS}
         keybinds.update(filtered)
@@ -548,6 +556,10 @@ def _refresh_sliders():
         pass
     if game_version_var is not None:
         game_version_var.set(ml.game_version)
+    if indirect_black_var is not None:
+        indirect_black_var.set(ml.indirect_black)
+    if indirect_all_var is not None:
+        indirect_all_var.set(ml.indirect_all)
     _sync_scroll_lock_btn()
     _sync_scroll_lock_btn()
     _sync_table_geo_lock_btn()
@@ -602,8 +614,11 @@ def _run_action(action):
         ml.powers_hover = False
     handler_name = KEYBINDS[action][2]
     if handler_name.startswith('ml.'):
-        fn = getattr(ml, handler_name[3:])
-        fn()
+        if _shift_down and handler_name[3:] in ['find_shot_stripe', 'find_shot_solid']:
+            ml.find_shot_black()
+        else:
+            fn = getattr(ml, handler_name[3:])
+            fn()
     else:
         globals()[handler_name]()
 def close_():
@@ -898,6 +913,10 @@ def create_buttons_window():
     global slider_scroll_sens_power
     global slider_scroll_sens_direction_var
     global slider_scroll_sens_direction
+    global indirect_black_var
+    global indirect_all_var
+    global checkbox_indirect_black
+    global checkbox_indirect_all
     bw = ctk.CTkToplevel()
     bw.title('Settings')
     bw.after(201, lambda: bw.iconbitmap(resource_path('s.ico')))
@@ -1023,6 +1042,24 @@ def create_buttons_window():
     for idx, lbl in enumerate(['Web', 'Phone / Emulator']):
         ctk.CTkRadioButton(vr, text=lbl, variable=game_version_var, value=idx, radiobutton_width=16, radiobutton_height=16, fg_color=ACCENT, hover_color=ACCENT2, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT).pack(side='left', padx=(0, 18))
     divider()
+    section_lbl('INDIRECT SHOTS')
+    indirect_black_var = tk.BooleanVar(value=ml.indirect_black)
+    def _on_indirect_black_change(*_):
+        ml.indirect_black = indirect_black_var.get()
+        ml.need_update_draws = True
+    indirect_black_var.trace_add('write', _on_indirect_black_change)
+    indirect_all_var = tk.BooleanVar(value=ml.indirect_all)
+    def _on_indirect_all_change(*_):
+        ml.indirect_all = indirect_all_var.get()
+        ml.need_update_draws = True
+    indirect_all_var.trace_add('write', _on_indirect_all_change)
+    ind_frame = ctk.CTkFrame(content, fg_color='transparent')
+    ind_frame.pack(fill='x', pady=2)
+    checkbox_indirect_black = ctk.CTkCheckBox(ind_frame, text='Black Ball Indirect', variable=indirect_black_var, checkbox_width=16, checkbox_height=16, fg_color=ACCENT, hover_color=ACCENT2, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT)
+    checkbox_indirect_black.pack(side='left', padx=(0, 18))
+    checkbox_indirect_all = ctk.CTkCheckBox(ind_frame, text='All Balls Indirect', variable=indirect_all_var, checkbox_width=16, checkbox_height=16, fg_color=ACCENT, hover_color=ACCENT2, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT)
+    checkbox_indirect_all.pack(side='left')
+    divider()
     kb_row = ctk.CTkFrame(content, fg_color='transparent')
     kb_row.pack(fill='x', pady=(4, 4))
     lock_btn = ctk.CTkButton(kb_row, text='🔓', width=34, height=34, corner_radius=8, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 16), text_color=TEXT2)
@@ -1044,7 +1081,7 @@ if __name__ == '__main__':
     pass
 else:
 
-    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'indicate_power': False}
+    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'indicate_power': False, 'indirect_black': False, 'indirect_all': False}
     if not os.path.exists(save_data_name):
         with open(save_data_name, 'w') as f:
             json.dump(_default_data, f)
@@ -1079,6 +1116,8 @@ else:
     ml.power_indicator_start = data.get('power_indicator_start', [0.0, 0.0])
     ml.power_indicator_end = data.get('power_indicator_end', [0.0, 0.0])
     ml.indicate_power = data.get('indicate_power', False)
+    ml.indirect_black = data.get('indirect_black', False)
+    ml.indirect_all = data.get('indirect_all', False)
     if 'keybinds' in data:
         filtered = {k: v for k, v in data['keybinds'].items() if k in KEYBINDS}
         keybinds.update(filtered)
