@@ -131,6 +131,8 @@ KEYBINDS = {
     'power 100%': ('9', True, '_set_power_100'),
     'find shot stripe': ('i', True, 'ml.find_shot_stripe'),
     'find shot solid': ('o', True, 'ml.find_shot_solid'),
+    'auto aim': ('a', True, 'auto_aim'),
+    'auto shoot': ('s', True, 'auto_shoot'),
 }
 def _set_power(value):
     ml.power_cue = max(0.0, min(1.0, value))
@@ -621,6 +623,117 @@ def _run_action(action):
             fn()
     else:
         globals()[handler_name]()
+
+def auto_aim():
+    if ml.cue_ball is None:
+        print("Auto-aim: No cue ball detected.")
+        return
+    
+    # Calculate screen coordinates of the cue ball
+    cue_x = ml.table_left + ml.cue_ball[0][0]
+    cue_y = ml.table_top + ml.cue_ball[0][1]
+    angle = ml.prediction_angle
+    
+    target_x = None
+    target_y = None
+    
+    # Try to find the exact midpoint of the predicted line segment
+    if ml.predictions is not None and len(ml.predictions) > 0:
+        balls_data = ml.predictions[0]
+        for b_data in balls_data:
+            if b_data.get('id') == -2:  # Cue ball ID
+                path = b_data.get('path', [])
+                if len(path) >= 2:
+                    p0 = path[0]
+                    p1 = path[1]
+                    target_x = ml.table_left + p0[0] + (p1[0] - p0[0]) / 2.0
+                    target_y = ml.table_top + p0[1] + (p1[1] - p0[1]) / 2.0
+                    break
+                    
+    # Fallback to a fixed distance along the prediction angle if path is not available
+    if target_x is None or target_y is None:
+        dist = 120.0
+        target_x = cue_x + math.cos(angle) * dist
+        target_y = cue_y + math.sin(angle) * dist
+        
+    # Clamp to screen boundary to be safe
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+    target_x = max(10, min(screen_width - 10, target_x))
+    target_y = max(10, min(screen_height - 10, target_y))
+    
+    print(f"Auto-aim: Tapping at center of predicted line: ({target_x:.1f}, {target_y:.1f})")
+    
+    # Perform the click
+    import time
+    from pynput.mouse import Button, Controller
+    mouse = Controller()
+    
+    # Save current position
+    orig_pos = mouse.position
+    
+    # Move to target position
+    mouse.position = (int(target_x), int(target_y))
+    time.sleep(0.1)
+    
+    # Press and release
+    mouse.press(Button.left)
+    time.sleep(0.1)
+    mouse.release(Button.left)
+    time.sleep(0.1)
+    
+    # Restore original position
+    mouse.position = orig_pos
+
+def auto_shoot():
+    start_coord = getattr(ml, 'power_indicator_start', [0.0, 0.0])
+    end_coord = getattr(ml, 'power_indicator_end', [0.0, 0.0])
+    
+    if not isinstance(start_coord, (list, tuple)) or len(start_coord) < 2 or not isinstance(end_coord, (list, tuple)) or len(end_coord) < 2 or start_coord == [0.0, 0.0] or end_coord == [0.0, 0.0]:
+        print("Auto-shoot: Power indicator not calibrated.")
+        return
+        
+    # Calculate target coordinate along the power bar
+    power = ml.power_cue
+    target_x = start_coord[0] + (end_coord[0] - start_coord[0]) * power
+    target_y = start_coord[1] + (end_coord[1] - start_coord[1]) * power
+    
+    print(f"Auto-shoot: Dragging from ({start_coord[0]:.1f}, {start_coord[1]:.1f}) to ({target_x:.1f}, {target_y:.1f}) for power {power:.2f}")
+    
+    import time
+    from pynput.mouse import Button, Controller
+    mouse = Controller()
+    
+    # Save current position
+    orig_pos = mouse.position
+    
+    # Move to start of power indicator
+    mouse.position = (int(start_coord[0]), int(start_coord[1]))
+    time.sleep(0.2)
+    
+    # Press
+    mouse.press(Button.left)
+    time.sleep(0.2)
+    
+    # Drag in steps
+    steps = 25
+    for i in range(1, steps + 1):
+        t = i / steps
+        curr_x = start_coord[0] + (target_x - start_coord[0]) * t
+        curr_y = start_coord[1] + (target_y - start_coord[1]) * t
+        mouse.position = (int(curr_x), int(curr_y))
+        time.sleep(0.01)
+        
+    # Hold for 0.5 seconds to ensure pixel accuracy and game registration
+    time.sleep(0.5)
+    
+    # Release to shoot
+    mouse.release(Button.left)
+    time.sleep(0.1)
+    
+    # Restore original position
+    mouse.position = orig_pos
+
 def close_():
     os._exit(1)
 def callback():

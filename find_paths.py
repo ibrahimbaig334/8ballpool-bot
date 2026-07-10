@@ -192,7 +192,7 @@ def cue_cushion_paths(cue_ball, balls, team_type, mid_pockets, corner_pockets, t
             bpos = (ball[0], ball[1])
             for pocket, ptype in pockets:
                 dist_bpos_pocket = dist(bpos, pocket)
-                if dist_bpos_pocket > ball_radius * 20:
+                if dist_bpos_pocket > ball_radius * 50:
                     continue
                 else:
                     ghost = compute_ghost_ball(bpos, pocket, ball_radius)
@@ -211,7 +211,7 @@ def cue_cushion_paths(cue_ball, balls, team_type, mid_pockets, corner_pockets, t
                                     if any((dist(hit, p) < ball_radius * 3 for p in pockets_2)):
                                         continue
                                     else:
-                                        if not shot_angle_ok(hit, ghost, bpos, 75 - dist_bpos_pocket * 4 / ball_radius):
+                                        if not shot_angle_ok(hit, ghost, bpos, 75):
                                             continue
                                         else:
                                             if ptype == 'mid' and parallel_to_y(bpos, pocket) < 0.9:
@@ -578,8 +578,8 @@ def cue_cushion_paths_n(cue_ball, balls, team_type, mid_pockets, corner_pockets,
 
         for pocket, ptype in pockets:
             dist_bpos_pocket = dist(bpos, pocket)
-            # Relax distance filter for multi-cushion: allow farther balls
-            max_dist = ball_radius * (20 if num_cushions <= 1 else 50 * num_cushions)
+            # Relax distance filter: allow farther balls
+            max_dist = ball_radius * 50 * num_cushions
             if dist_bpos_pocket > max_dist:
                 continue
 
@@ -645,8 +645,7 @@ def cue_cushion_paths_n(cue_ball, balls, team_type, mid_pockets, corner_pockets,
                     continue
 
                 # Check shot angle from the last bounce point to the ghost
-                max_angle = 75 - dist_bpos_pocket * 4 / ball_radius
-                if not shot_angle_ok(bounce_points[-1], ghost, bpos, max_angle):
+                if not shot_angle_ok(bounce_points[-1], ghost, bpos, 75):
                     continue
 
                 # Check mid-pocket angle
