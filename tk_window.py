@@ -704,19 +704,29 @@ def auto_shoot():
     from pynput.mouse import Button, Controller
     mouse = Controller()
     
-    # Save current position
-    orig_pos = mouse.position
-    
     # Move to start of power indicator
     mouse.position = (int(start_coord[0]), int(start_coord[1]))
-    time.sleep(0.2)
+    time.sleep(0.5)
     
     # Press
     mouse.press(Button.left)
-    time.sleep(0.2)
+    # time.sleep(0.5)
     
     # Drag in steps
-    steps = 25
+    if power < 0.3:
+        steps = 50
+    elif power < 0.4:
+        steps = 75
+    elif power < 0.51:
+        steps = 100
+    elif power < 0.65:
+        steps = 150
+    elif power < 0.78:
+        steps = 175        
+    elif power < 0.9:
+        steps = 200
+    else:
+        steps = 50
     for i in range(1, steps + 1):
         t = i / steps
         curr_x = start_coord[0] + (target_x - start_coord[0]) * t
@@ -729,10 +739,6 @@ def auto_shoot():
     
     # Release to shoot
     mouse.release(Button.left)
-    time.sleep(0.1)
-    
-    # Restore original position
-    mouse.position = orig_pos
 
 def close_():
     os._exit(1)
