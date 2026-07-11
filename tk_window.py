@@ -698,8 +698,6 @@ def auto_shoot():
     target_x = start_coord[0] + (end_coord[0] - start_coord[0]) * power
     target_y = start_coord[1] + (end_coord[1] - start_coord[1]) * power
     
-    print(f"Auto-shoot: Dragging from ({start_coord[0]:.1f}, {start_coord[1]:.1f}) to ({target_x:.1f}, {target_y:.1f}) for power {power:.2f}")
-    
     import time
     from pynput.mouse import Button, Controller
     mouse = Controller()
@@ -1209,7 +1207,7 @@ else:
         print('save data found')
     with open(save_data_name) as f:
         data = json.load(f)
-    print('save data loaded:', data)
+    print('save data loaded')
     import splash_screen
     splash_screen.update(82, 'Applying settings...')
     ct = data.get('ct', 2)
