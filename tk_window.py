@@ -656,7 +656,28 @@ def _point_to_segment_distance(point, start, end):
 def _normalise_angle(angle):
     return (angle + math.pi) % (2.0 * math.pi) - math.pi
 
-def _detect_cue_guideline(cue_screen):
+def _save_aim_debug_capture(frame, white_mask, cue_local, lines, selected_line, tag):
+    """Save raw, thresholded and annotated table captures for aim tuning."""
+    import time
+    debug_dir = os.path.join(os.getcwd(), 'auto_aim_debug')
+    os.makedirs(debug_dir, exist_ok=True)
+    stamp = time.strftime('%Y%m%d_%H%M%S') + f'_{int(time.time() * 1000) % 1000:03d}'
+    prefix = os.path.join(debug_dir, f'{stamp}_{tag}')
+    bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    annotated = bgr.copy()
+    if lines is not None:
+        for x1, y1, x2, y2 in lines[:, 0]:
+            cv2.line(annotated, (int(x1), int(y1)), (int(x2), int(y2)), (0, 180, 255), 1)
+    if selected_line is not None:
+        start, end = selected_line
+        cv2.line(annotated, tuple(map(int, start)), tuple(map(int, end)), (0, 255, 0), 3)
+    cv2.circle(annotated, tuple(map(int, cue_local)), max(4, int(ml.ball_radius)), (255, 0, 255), 2)
+    cv2.imwrite(prefix + '_raw.png', bgr)
+    cv2.imwrite(prefix + '_white_mask.png', white_mask)
+    cv2.imwrite(prefix + '_annotated.png', annotated)
+    print(f'Auto-aim debug saved: {os.path.abspath(prefix)}_[raw|white_mask|annotated].png')
+
+def _detect_cue_guideline(cue_screen, debug_tag=None):
     """Find the bright guideline connected to the cue ball.
 
     The search is restricted to the calibrated table and only accepts a long,
@@ -675,16 +696,18 @@ def _detect_cue_guideline(cue_screen):
     bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     # The game guideline is white; retain high-value, nearly colourless pixels.
-    white = cv2.inRange(hsv, np.array((0, 0, 205)), np.array((180, 65, 255)))
+    white = cv2.inRange(hsv, np.array((0, 0, 170)), np.array((180, 100, 255)))
     white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     minimum_length = max(30, int(ml.ball_radius * 2.2))
     lines = cv2.HoughLinesP(
         white, 1, np.pi / 720, threshold=max(18, int(ml.ball_radius * 1.5)),
         minLineLength=minimum_length, maxLineGap=max(8, int(ml.ball_radius * 1.2)))
+    cue_local = (cue_screen[0] - ml.table_left, cue_screen[1] - ml.table_top)
     if lines is None:
+        if debug_tag is not None:
+            _save_aim_debug_capture(frame, white, cue_local, None, None, debug_tag)
         return None
 
-    cue_local = (cue_screen[0] - ml.table_left, cue_screen[1] - ml.table_top)
     best = None
     for line in lines[:, 0]:
         x1, y1, x2, y2 = (float(v) for v in line)
@@ -701,11 +724,15 @@ def _detect_cue_guideline(cue_screen):
             continue
         score = length + far_distance - distance * 3.0
         if best is None or score > best[0]:
-            best = (score, (ml.table_left + far[0], ml.table_top + far[1]))
+            best = (score, (ml.table_left + far[0], ml.table_top + far[1]), (start, end))
 
     if best is None:
+        if debug_tag is not None:
+            _save_aim_debug_capture(frame, white, cue_local, lines, None, debug_tag)
         return None
     endpoint = best[1]
+    if debug_tag is not None:
+        _save_aim_debug_capture(frame, white, cue_local, lines, best[2], debug_tag)
     return {
         'endpoint': endpoint,
         'angle': math.atan2(endpoint[1] - cue_screen[1], endpoint[0] - cue_screen[0]),
@@ -771,6 +798,13 @@ def auto_aim():
     
     # Save current position
     orig_pos = mouse.position
+
+    # Capture the existing guideline before changing anything.  Besides giving
+    # us useful diagnostics, this confirms whether the game exposes a line to
+    # the desktop capture at all before the initial placement click.
+    initial_guideline = _detect_cue_guideline((cue_x, cue_y), debug_tag='before_click')
+    if initial_guideline is not None:
+        print(f"Auto-aim: Existing guideline detected at {math.degrees(initial_guideline['angle']):.2f} degrees.")
     
     # Move to target position
     mouse.position = (int(target_x), int(target_y))
@@ -798,7 +832,8 @@ def auto_aim():
         previous_abs_error = None
         for iteration in range(12):
             time.sleep(0.12)
-            measured = _detect_cue_guideline((cue_x, cue_y))
+            measured = _detect_cue_guideline(
+                (cue_x, cue_y), debug_tag='after_click' if iteration == 0 else None)
             if measured is None:
                 print('Auto-aim: Guideline was not visible; keeping the initial alignment.')
                 break
