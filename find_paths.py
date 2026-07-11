@@ -124,8 +124,9 @@ def direct_paths(cue_ball, balls, team_type, mid_pockets, corner_pockets, BALL_R
                             if not shot_angle_ok((cue_ball[0], cue_ball[1]), ghost, (bx, by)):
                                 continue
                             else:
-                                if pocket_type == 'mid' and parallel_to_y((bx, by), (px, py)) < 0.9:
-                                    continue
+                                # Let the physics simulation validate the real
+                                # middle-pocket mouth.  The old vertical-only
+                                # gate hid valid angled middle-pocket shots.
                                 angle = math.atan2(gy - cue_ball[1], gx - cue_ball[0])
                                 results.append((angle, ghost, (bx, by), (px, py)))
     return results
@@ -214,8 +215,6 @@ def cue_cushion_paths(cue_ball, balls, team_type, mid_pockets, corner_pockets, t
                                         if not shot_angle_ok(hit, ghost, bpos, 75):
                                             continue
                                         else:
-                                            if ptype == 'mid' and parallel_to_y(bpos, pocket) < 0.9:
-                                                continue
                                             if path_blocked(cue_ball[0], cue_ball[1], hit[0], hit[1], balls, ball_radius, ignore_ball=None):
                                                 continue
                                             else:
@@ -264,8 +263,6 @@ def ball_cushion_paths(cue_ball, balls, team_type, mid_pockets, corner_pockets, 
                                     if not shot_angle_ok(cue_ball, ghost, bpos, 50):
                                         continue
                                     else:
-                                        if ptype == 'mid' and parallel_to_y(hit, pocket) < 0.9:
-                                            continue
                                         if path_blocked(cue_ball[0], cue_ball[1], ghost[0], ghost[1], balls, ball_radius, ignore_ball=ball):
                                             continue
                                         else:
@@ -290,8 +287,6 @@ def combination_paths(cue_ball, balls, team_type, mid_pockets, corner_pockets, b
             if path_blocked(b2[0], b2[1], pocket[0], pocket[1], balls, ball_radius, ignore_ball=ball2):
                 continue
             else:
-                if ptype == 'mid' and parallel_to_y(b2, pocket) < 0.9:
-                    continue
                 ghost2 = compute_ghost_ball(b2, pocket, ball_radius)
                 if ghost2 is None:
                     continue
@@ -511,10 +506,6 @@ def ball_cushion_paths_n(cue_ball, balls, team_type, mid_pockets, corner_pockets
                 if not shot_angle_ok(cue_ball, ghost, bpos, 50):
                     continue
 
-                # Check mid-pocket angle for the final segment (last bounce -> pocket)
-                if ptype == 'mid' and parallel_to_y(bounce_points[-1], pocket) < 0.9:
-                    continue
-
                 # Check cue -> ghost path is clear
                 if path_blocked(cue_ball[0], cue_ball[1], ghost[0], ghost[1], balls, ball_radius, ignore_ball=ball):
                     continue
@@ -646,10 +637,6 @@ def cue_cushion_paths_n(cue_ball, balls, team_type, mid_pockets, corner_pockets,
 
                 # Check shot angle from the last bounce point to the ghost
                 if not shot_angle_ok(bounce_points[-1], ghost, bpos, 75):
-                    continue
-
-                # Check mid-pocket angle
-                if ptype == 'mid' and parallel_to_y(bpos, pocket) < 0.9:
                     continue
 
                 # Check all cue path segments for blockages

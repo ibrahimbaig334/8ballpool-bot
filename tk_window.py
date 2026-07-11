@@ -45,6 +45,8 @@ import threading
 import tkinter as tk
 import math_logic as ml
 import pyautogui
+import cv2
+import numpy as np
 import json
 import os
 import customtkinter as ctk
@@ -103,6 +105,7 @@ _cue_ind_btn_var = None
 _cue_ind_toggle_btn = None
 _cue_start_coord_var = None
 _cue_end_coord_var = None
+_aim_indicator_coord_var = None
 indirect_black_var = None
 indirect_all_var = None
 checkbox_indirect_black = None
@@ -455,6 +458,7 @@ def _current_data():
         'cue_start_scaler': ml.cue_start_scaler,
         'power_indicator_start': getattr(ml, 'power_indicator_start', [0.0, 0.0]),
         'power_indicator_end': getattr(ml, 'power_indicator_end', [0.0, 0.0]),
+        'aim_indicator_position': getattr(ml, 'aim_indicator_position', [0.0, 0.0]),
         'indicate_power': getattr(ml, 'indicate_power', False),
         'indirect_black': ml.indirect_black,
         'indirect_all': ml.indirect_all,
@@ -493,6 +497,7 @@ def reset():
     ml.cue_start_scaler = data.get('cue_start_scaler', ml.cue_start_scaler)
     ml.power_indicator_start = data.get('power_indicator_start', getattr(ml, 'power_indicator_start', [0.0, 0.0]))
     ml.power_indicator_end = data.get('power_indicator_end', getattr(ml, 'power_indicator_end', [0.0, 0.0]))
+    ml.aim_indicator_position = data.get('aim_indicator_position', getattr(ml, 'aim_indicator_position', [0.0, 0.0]))
     ml.indicate_power = data.get('indicate_power', getattr(ml, 'indicate_power', False))
     ml.indirect_black = data.get('indirect_black', False)
     ml.indirect_all = data.get('indirect_all', False)
@@ -534,6 +539,12 @@ def refresh_cue_sliders():
                     _cue_end_coord_var.set(f'{float(e[0]):.1f},  {float(e[1]):.1f}')
                 except Exception:
                     _cue_end_coord_var.set('—')
+            if _aim_indicator_coord_var is not None:
+                a = getattr(ml, 'aim_indicator_position', [0.0, 0.0])
+                try:
+                    _aim_indicator_coord_var.set(f'{float(a[0]):.1f},  {float(a[1]):.1f}')
+                except Exception:
+                    _aim_indicator_coord_var.set('not set')
 def _refresh_sliders():
     try:
         if slider_power is not None:
@@ -624,6 +635,95 @@ def _run_action(action):
     else:
         globals()[handler_name]()
 
+def _is_screen_coordinate(value):
+    """True only for a coordinate that has been explicitly calibrated."""
+    try:
+        return len(value) >= 2 and float(value[0]) > 0 and float(value[1]) > 0
+    except (TypeError, ValueError):
+        return False
+
+def _point_to_segment_distance(point, start, end):
+    px, py = point
+    x1, y1 = start
+    x2, y2 = end
+    dx, dy = x2 - x1, y2 - y1
+    length_sq = dx * dx + dy * dy
+    if length_sq == 0:
+        return math.hypot(px - x1, py - y1)
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / length_sq))
+    return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+
+def _normalise_angle(angle):
+    return (angle + math.pi) % (2.0 * math.pi) - math.pi
+
+def _detect_cue_guideline(cue_screen):
+    """Find the bright guideline connected to the cue ball.
+
+    The search is restricted to the calibrated table and only accepts a long,
+    low-saturation white segment that begins near the cue ball.  This avoids
+    UI chrome and other white balls while returning the line endpoint that is
+    relevant for accurate aim alignment.
+    """
+    try:
+        roi = {'top': int(ml.table_top), 'left': int(ml.table_left),
+               'width': int(ml.table_width), 'height': int(ml.table_height)}
+        frame = np.array(ml.sct.grab(roi))
+    except Exception as exc:
+        print(f'Auto-aim: Could not capture table for guideline detection: {exc}')
+        return None
+
+    bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    # The game guideline is white; retain high-value, nearly colourless pixels.
+    white = cv2.inRange(hsv, np.array((0, 0, 205)), np.array((180, 65, 255)))
+    white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    minimum_length = max(30, int(ml.ball_radius * 2.2))
+    lines = cv2.HoughLinesP(
+        white, 1, np.pi / 720, threshold=max(18, int(ml.ball_radius * 1.5)),
+        minLineLength=minimum_length, maxLineGap=max(8, int(ml.ball_radius * 1.2)))
+    if lines is None:
+        return None
+
+    cue_local = (cue_screen[0] - ml.table_left, cue_screen[1] - ml.table_top)
+    best = None
+    for line in lines[:, 0]:
+        x1, y1, x2, y2 = (float(v) for v in line)
+        start, end = (x1, y1), (x2, y2)
+        length = math.hypot(x2 - x1, y2 - y1)
+        distance = _point_to_segment_distance(cue_local, start, end)
+        if distance > ml.ball_radius * 1.65 or length < minimum_length:
+            continue
+        # The endpoint farther from the cue is the visible end before the
+        # first collision/cushion.  It is more stable than Hough's ordering.
+        far = max((start, end), key=lambda p: math.hypot(p[0] - cue_local[0], p[1] - cue_local[1]))
+        far_distance = math.hypot(far[0] - cue_local[0], far[1] - cue_local[1])
+        if far_distance < ml.ball_radius * 2.5:
+            continue
+        score = length + far_distance - distance * 3.0
+        if best is None or score > best[0]:
+            best = (score, (ml.table_left + far[0], ml.table_top + far[1]))
+
+    if best is None:
+        return None
+    endpoint = best[1]
+    return {
+        'endpoint': endpoint,
+        'angle': math.atan2(endpoint[1] - cue_screen[1], endpoint[0] - cue_screen[0]),
+    }
+
+def _predicted_guideline_endpoint(cue_screen):
+    """Return the first predicted cue-path endpoint, or a safe ray fallback."""
+    if ml.predictions is not None:
+        for ball_data in ml.predictions[0]:
+            if ball_data.get('id') == -2:
+                path = ball_data.get('path', [])
+                if len(path) >= 2:
+                    point = path[1]
+                    return (ml.table_left + point[0], ml.table_top + point[1])
+    fallback_distance = max(160.0, ml.ball_radius * 12.0)
+    return (cue_screen[0] + math.cos(ml.prediction_angle) * fallback_distance,
+            cue_screen[1] + math.sin(ml.prediction_angle) * fallback_distance)
+
 def auto_aim():
     if ml.cue_ball is None:
         print("Auto-aim: No cue ball detected.")
@@ -680,10 +780,58 @@ def auto_aim():
     mouse.press(Button.left)
     time.sleep(0.1)
     mouse.release(Button.left)
-    time.sleep(0.1)
-    
-    # Restore original position
-    mouse.position = orig_pos
+    time.sleep(0.35)
+
+    aim_wheel = getattr(ml, 'aim_indicator_position', [0.0, 0.0])
+    if not _is_screen_coordinate(aim_wheel):
+        print('Auto-aim: Initial alignment complete. Calibrate Aim Wheel Position to enable pixel feedback.')
+        mouse.position = orig_pos
+        return
+
+    desired_end = _predicted_guideline_endpoint((cue_x, cue_y))
+    desired_angle = math.atan2(desired_end[1] - cue_y, desired_end[0] - cue_x)
+    desired_unit = (math.cos(desired_angle), math.sin(desired_angle))
+    mouse.position = (int(aim_wheel[0]), int(aim_wheel[1]))
+    time.sleep(0.15)
+    mouse.press(Button.left)
+    try:
+        previous_abs_error = None
+        for iteration in range(12):
+            time.sleep(0.12)
+            measured = _detect_cue_guideline((cue_x, cue_y))
+            if measured is None:
+                print('Auto-aim: Guideline was not visible; keeping the initial alignment.')
+                break
+
+            endpoint = measured['endpoint']
+            angular_error = _normalise_angle(desired_angle - measured['angle'])
+            # Perpendicular distance at the line's visible end is the
+            # pixel-level quantity that matters at the collision point.
+            endpoint_error = abs(
+                (endpoint[0] - cue_x) * desired_unit[1]
+                - (endpoint[1] - cue_y) * desired_unit[0])
+            if abs(angular_error) <= 0.0015 or endpoint_error <= 1.5:
+                print(f'Auto-aim: Guideline aligned ({endpoint_error:.1f}px endpoint error).')
+                break
+
+            # In screen coordinates a clockwise/right correction increases
+            # atan2's angle.  The game maps a downward wheel scroll to that
+            # rightward motion; upward is the inverse.
+            direction = -1 if angular_error > 0 else 1
+            ticks = max(1, min(12, int(round(abs(angular_error) / 0.0035))))
+            if previous_abs_error is not None and abs(angular_error) >= previous_abs_error:
+                ticks = max(1, ticks // 2)
+            # Send individual wheel detents while held so the game animates
+            # the cue movement instead of receiving one abrupt jump.
+            for _ in range(ticks):
+                mouse.scroll(0, direction)
+                time.sleep(0.025)
+            previous_abs_error = abs(angular_error)
+        else:
+            print('Auto-aim: Reached feedback limit; last visible guideline is retained.')
+    finally:
+        mouse.release(Button.left)
+        mouse.position = orig_pos
 
 def auto_shoot():
     start_coord = getattr(ml, 'power_indicator_start', [0.0, 0.0])
@@ -857,6 +1005,7 @@ def open_cue_settings_window():
     global slider_cue_length
     global _cue_ind_btn_var
     global _cue_end_coord_var
+    global _aim_indicator_coord_var
     global cue_settings_window
     global slider_cue_length_var
     global slider_cue_start
@@ -867,7 +1016,7 @@ def open_cue_settings_window():
     else:
         cue_settings_window = ctk.CTkToplevel()
         cue_settings_window.title('Cue Settings')
-        cue_settings_window.geometry('520x410')
+        cue_settings_window.geometry('520x465')
         cue_settings_window.wm_attributes('-topmost', True)
         cue_settings_window.resizable(False, False)
         cue_settings_window.configure(fg_color=BG)
@@ -935,7 +1084,8 @@ def open_cue_settings_window():
                 ch_items.append(canvas.create_line(x, y - arm - gap, x, y - gap, fill=color, width=2, tags='__crosshair__'))
                 ch_items.append(canvas.create_line(x, y + gap, x, y + arm + gap, fill=color, width=2, tags='__crosshair__'))
                 ch_items.append(canvas.create_oval(x - 3, y - 3, x + 3, y + 3, outline=color, fill=color, tags='__crosshair__'))
-                label = f"Click to set  {('Start' if which == 'start' else 'End')}  position  ({int(x)}, {int(y)})  |  Esc = cancel"
+                labels = {'start': 'Power Start', 'end': 'Power End', 'aim': 'Aim Wheel'}
+                label = f"Click to set  {labels[which]}  position  ({int(x)}, {int(y)})  |  Esc = cancel"
                 ch_items.append(canvas.create_text(x, y - arm - gap - 18, text=label, fill=color, font=('Segoe UI', 11), tags='__crosshair__'))
                 canvas.update_idletasks()
             from pynput import mouse as _pm, keyboard as _pk
@@ -975,8 +1125,10 @@ def open_cue_settings_window():
                         pos = [float(mx), float(my)]
                         if which == 'start':
                             ml.power_indicator_start = pos
-                        else:
+                        elif which == 'end':
                             ml.power_indicator_end = pos
+                        else:
+                            ml.aim_indicator_position = pos
                         coord_var.set(_fmt_pos(pos))
                         ml.need_update_draws = True
                 if cue_settings_window is not None and cue_settings_window.winfo_exists():
@@ -1006,6 +1158,15 @@ def open_cue_settings_window():
         _pick_end_btn = ctk.CTkButton(end_row, text='✛  Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
         _pick_end_btn.configure(command=lambda: _start_crosshair_pick('end', _cue_end_coord_var, _pick_end_btn))
         _pick_end_btn.pack(side='right')
+        ctk.CTkFrame(frame, fg_color=BORDER, height=1).pack(fill='x', padx=5, pady=(5, 6))
+        aim_row = ctk.CTkFrame(frame, fg_color='transparent')
+        aim_row.pack(fill='x', padx=5, pady=(0, 4))
+        ctk.CTkLabel(aim_row, text='Aim Wheel Position', text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12)).pack(side='left')
+        _aim_indicator_coord_var = tk.StringVar(value=_fmt_pos(getattr(ml, 'aim_indicator_position', None)))
+        ctk.CTkLabel(aim_row, textvariable=_aim_indicator_coord_var, text_color=ACCENT2, font=ctk.CTkFont('Consolas', 12), width=120, anchor='e').pack(side='left', padx=8)
+        _pick_aim_btn = ctk.CTkButton(aim_row, text='âœ›  Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
+        _pick_aim_btn.configure(command=lambda: _start_crosshair_pick('aim', _aim_indicator_coord_var, _pick_aim_btn))
+        _pick_aim_btn.pack(side='right')
         def on_close():
             global cue_settings_window
             cue_settings_window.destroy()
@@ -1198,7 +1359,7 @@ if __name__ == '__main__':
     pass
 else:
 
-    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'indicate_power': False, 'indirect_black': False, 'indirect_all': False}
+    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'aim_indicator_position': [0.0, 0.0], 'indicate_power': False, 'indirect_black': False, 'indirect_all': False}
     if not os.path.exists(save_data_name):
         with open(save_data_name, 'w') as f:
             json.dump(_default_data, f)
@@ -1232,6 +1393,7 @@ else:
     ml.cue_start_scaler = data.get('cue_start_scaler', 1)
     ml.power_indicator_start = data.get('power_indicator_start', [0.0, 0.0])
     ml.power_indicator_end = data.get('power_indicator_end', [0.0, 0.0])
+    ml.aim_indicator_position = data.get('aim_indicator_position', [0.0, 0.0])
     ml.indicate_power = data.get('indicate_power', False)
     ml.indirect_black = data.get('indirect_black', False)
     ml.indirect_all = data.get('indirect_all', False)

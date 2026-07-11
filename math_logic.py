@@ -50,6 +50,7 @@ prediction_angle = 0
 predictions = None
 power_indicator_start = 1000
 power_indicator_end = 1000
+aim_indicator_position = [0.0, 0.0]
 indicate_power = False
 indirect_black = False
 indirect_all   = False
@@ -560,9 +561,11 @@ def direction_to_mouse():
         need_update_draws = True
 need_update_draws = False
 def get_pockets():
-    from simulation_use import POCKETS_SCREEN
+    # POCKETS_SCREEN is refreshed only after a simulation.  Build the middle
+    # pockets from the calibrated table instead of using stale/default values.
+    from simulation_use import POCKETS, to_screen_coords
     corner_pockets = [(ball_radius, ball_radius), (table_width - ball_radius, ball_radius), (table_width - ball_radius, table_height - ball_radius), (ball_radius, table_height - ball_radius)]
-    mid_pockets = [POCKETS_SCREEN[1], POCKETS_SCREEN[4]]
+    mid_pockets = [to_screen_coords(*POCKETS[index], table_width) for index in (1, 4)]
     return (corner_pockets, mid_pockets)
 def update_draws(draw_circle_fn, draw_line_fn):
     from tk_window import delete_all_drawings_no_updt, _draw_table_rect

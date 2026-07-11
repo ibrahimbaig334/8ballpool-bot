@@ -95,8 +95,13 @@ def parallel_to_y(ball, pocket):
     else:
         return abs(dy) / length
 def mid_pocket_reachable(ball_pos, pocket):
-    """\n    For mid-pockets the shot must approach mostly perpendicular to the long\n    rail (parallel_to_y >= 0.9).  Corner pockets are always reachable from\n    any angle, so this always returns True for them.\n    """
-    return parallel_to_y(ball_pos, pocket) >= 0.9
+    """Return True so the simulator, which has the real pocket geometry,
+    decides whether an angled middle-pocket route is legal.
+
+    A previous ``parallel_to_y >= 0.9`` pre-filter removed legitimate shots
+    before their collision outcome could be scored.
+    """
+    return True
 def _cue_goes_behind_target(cue_pos, target_pos, ghost_pos):
     """\n    Returns True if the cue would have to travel through or past the target\n    ball to reach the ghost contact point -- an impossible shot.\n\n    The ghost is always exactly 2*ball_radius from the target centre by\n    construction, so a distance-to-segment test always triggers falsely.\n    Instead we use a dot-product projection:\n\n        Project the target onto the cue->ghost ray.\n\n    If the target\'s projection t >= 1.0, the target sits at or beyond the\n    ghost along that ray, meaning the ghost is on the far side of the target\n    from the cue -- the cue must pass through the target to reach it (invalid).\n\n    If t < 1.0 the ghost is on the near side; the cue approaches the target\n    and makes contact without needing to cross it (valid).\n    """
     cx, cy = cue_pos
