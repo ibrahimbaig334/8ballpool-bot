@@ -6,7 +6,7 @@ import traceback
 import splash_screen
 class SingleInstanceChecker:
     def __init__(self):
-        self.mutex_name = 'Global\\h8bp_ruler_UniqueID_126h76'
+        self.mutex_name = 'Ibrahim Baig Ruler'
         self.mutex = None
     def is_already_running(self):
         ERROR_ALREADY_EXISTS = 183
@@ -24,7 +24,7 @@ instance_checker = SingleInstanceChecker()
 if instance_checker.is_already_running():
     root_temp = tk.Tk()
     root_temp.withdraw()
-    messagebox.showerror('Already Running', '8BP Ruler is already running!\nPlease close the existing instance first.')
+    messagebox.showerror('Already Running', 'Ibrahim Baig Ruler is already running!\nPlease close the existing instance first.')
     root_temp.destroy()
     sys.exit(0)
 def show_error(msg):
