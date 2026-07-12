@@ -54,9 +54,11 @@ import ctypes
 from tkinter import messagebox
 import sys
 from math2 import *
+from qt_overlay import PredictionOverlay
 show_table_bounds = False
 keys_locked = False
 app_ready = False
+_qt_overlay = None
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
@@ -321,14 +323,12 @@ def _poll_kb_queue():
     if buttons_win_opened:
         canvas.after(30, _poll_kb_queue)
 def _abs(rx, ry):
-    return (int(round(ml.table_left + rx)), int(round(ml.table_top + ry)))
+    return (float(ml.table_left + rx), float(ml.table_top + ry))
 _circle_pool = []
 _line_pool = []
 _active_circle_count = 0
 _active_line_count = 0
 def draw_line(pt1, pt2, color=(255, 255, 255), dots=False):
-    global _active_line_count
-    rgb = f'#{int(color[0]):02x}{int(color[1]):02x}{int(color[2]):02x}'
     ax1, ay1 = _abs(pt1[0], pt1[1])
     ax2, ay2 = _abs(pt2[0], pt2[1])
     if dots:
@@ -340,27 +340,10 @@ def draw_line(pt1, pt2, color=(255, 255, 255), dots=False):
             y = ay1 + dy * i / steps
             draw_circle((x - ml.table_left, y - ml.table_top), 1, color)
     else:
-        if _active_line_count < len(_line_pool):
-            line_id = _line_pool[_active_line_count]
-            canvas.coords(line_id, ax1, ay1, ax2, ay2)
-            canvas.itemconfig(line_id, fill=rgb, width=int(round(lt)), state='normal')
-        else:
-            line_id = canvas.create_line(ax1, ay1, ax2, ay2, fill=rgb, width=int(round(lt)))
-            _line_pool.append(line_id)
-        _active_line_count += 1
+        _qt_overlay.add_line(ax1, ay1, ax2, ay2, color, max(1.0, float(lt)))
 def draw_circle(center, radius, color=(255, 255, 255)):
-    global _active_circle_count
-    rgb = f'#{int(color[0]):02x}{int(color[1]):02x}{int(color[2]):02x}'
     ax, ay = _abs(center[0], center[1])
-    r = int(round(radius))
-    if _active_circle_count < len(_circle_pool):
-        circle_id = _circle_pool[_active_circle_count]
-        canvas.coords(circle_id, ax - r, ay - r, ax + r, ay + r)
-        canvas.itemconfig(circle_id, outline=rgb, width=int(round(ct)), state='normal')
-    else:
-        circle_id = canvas.create_oval(ax - r, ay - r, ax + r, ay + r, outline=rgb, width=int(round(ct)))
-        _circle_pool.append(circle_id)
-    _active_circle_count += 1
+    _qt_overlay.add_circle(ax, ay, radius, color, max(1.0, float(ct)))
 def draw_pixel(x, y, color=(255, 255, 255)):
     rgb = f'#{int(color[0]):02x}{int(color[1]):02x}{int(color[2]):02x}'
     ax, ay = _abs(x, y)
@@ -380,11 +363,13 @@ def _draw_table_rect():
 def delete_all_drawings():
     delete_all_drawings_no_updt()
     canvas.update_idletasks()
+    _qt_overlay.present()
 def delete_all_drawings_no_updt():
     global _active_line_count
     global _active_circle_count
     _active_circle_count = 0
     _active_line_count = 0
+    _qt_overlay.clear()
     for item_id in _circle_pool:
         canvas.itemconfig(item_id, state='hidden')
     for item_id in _line_pool:
@@ -393,6 +378,7 @@ def delete_all_drawings_no_updt():
     canvas.delete(TABLE_TAG)
 def update_canvas_():
     canvas.update_idletasks()
+    _qt_overlay.present()
 def toggle_table_bounds():
     global show_table_bounds
     show_table_bounds = not show_table_bounds
@@ -425,12 +411,14 @@ def update_window():
     if show_table_bounds and not canvas.find_withtag(TABLE_TAG):
         _draw_table_rect()
     ml.update(draw_circle, draw_line)
+    _qt_overlay.present()
     _sync_show_table_btn()
     canvas.after(80, update_window)
 
 def _keep_overlay_topmost():
     try:
         window.wm_attributes('-topmost', True)
+        _qt_overlay.raise_()
     finally:
         canvas.after(1000, _keep_overlay_topmost)
 def _current_data():
@@ -1317,6 +1305,7 @@ def create_buttons_window():
         global tr
         tr = int(v)
         window.wm_attributes('-alpha', tr * 0.1)
+        _qt_overlay.set_opacity(tr * 0.1)
     slider_ct, slider_ct_var = slider_row('Circles', 1, 10, ct, on_ct)
     slider_lt, slider_lt_var = slider_row('Lines', 1, 10, lt, on_lt)
     slider_tr, slider_tr_var = slider_row('Opacity', 1, 10, tr, on_tr)
@@ -1449,6 +1438,8 @@ else:
     window.geometry(f'{_sw}x{_sh}+0+0')
     canvas = tk.Canvas(window, bg='azure', width=_sw, height=_sh, highlightthickness=0)
     canvas.pack(fill=tk.BOTH, expand=True)
+    _qt_overlay = PredictionOverlay()
+    _qt_overlay.set_opacity(tr * 0.1)
     def _apply_click_through():
         try:
             hwnd = ctypes.windll.user32.GetAncestor(canvas.winfo_id(), 2)
