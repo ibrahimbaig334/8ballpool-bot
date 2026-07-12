@@ -624,9 +624,11 @@ def delete_all_balls():
     balls = []
     need_update_draws = True
 def score_single(angle_, power_, cue_ball_, black_ball_, team_balls_, opp_balls_, cue_cushion_mode=False):
-    from simulation_use import POCKETS_SCREEN
     balls_data, pocketed, first_hit_id, cue_hit_wall_first = simulate_shot(cue_ball_, black_ball_, team_balls_, opp_balls_, angle_, power_, get_cue_force(), table_width)
-    draw_search(balls_data, pocketed, POCKETS_SCREEN)
+    # This is called for every angle/power candidate while searching.  Drawing
+    # each temporary candidate forces thousands of Tk updates and makes the
+    # optimizer appear to hang.  Only the selected result is rendered by the
+    # normal update path after find_shot_x sets its angle and power.
     if cue_cushion_mode and cue_hit_wall_first:
         # For a deliberate cue-cushion shot the cue hits the wall before the
         # team ball – skip the "hit team ball first" foul check and only
