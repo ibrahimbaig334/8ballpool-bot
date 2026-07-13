@@ -892,7 +892,7 @@ def auto_shoot():
         steps = 150
     elif power < 0.78:
         steps = 175        
-    elif power < 0.9:
+    elif power < 0.98:
         steps = 200
     else:
         steps = 50
