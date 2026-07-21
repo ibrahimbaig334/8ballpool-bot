@@ -1,49 +1,7 @@
-global slider_power
-global button_table_geo_lock
-global _lock_btn_ref
-global slider_scroll_sens_power_var
-global _cue_ind_toggle_btn
-global key_tr
-global slider_cue_length
-global can_open_keybinds
-global slider_cue_start
-global show_table_bounds
-global slider_ct
-global slider_tr
-global tr
-global button_show_table
-global slider_tr_var
-global keys_locked
-global button_scroll_lock
-global cue_settings_window
-global _active_line_count
-global ct
-global slider_scroll_sens_direction
-global slider_cue_start_var
-global game_version_var
-global slider_ct_var
-global _cue_start_coord_var
-global key_save
-global lt
-global _active_circle_count
-global button_cue_settings
-global buttons_win_opened
-global slider_scroll_sens_power
-global slider_cue_length_var
-global slider_lt_var
-global _kb_listener
-global _kb_paused
-global slider_lt
-global _shift_down
-global slider_power_var
-global _cue_ind_btn_var
-global _cue_end_coord_var
-global slider_scroll_sens_direction_var
-import math
+﻿import math
 import queue
 import threading
 import tkinter as tk
-import math_logic as ml
 import pyautogui
 import cv2
 import numpy as np
@@ -53,8 +11,19 @@ import customtkinter as ctk
 import ctypes
 from tkinter import messagebox
 import sys
-from math2 import *
-from qt_overlay import PredictionOverlay
+
+# Ensure project root is on path so sibling packages resolve
+_UI_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_UI_DIR)
+for _p in [_PROJECT_ROOT, _UI_DIR,
+           os.path.join(_PROJECT_ROOT, 'core'),
+           os.path.join(_PROJECT_ROOT, 'core', 'binaries')]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from core import math_logic as ml
+from core.math2 import *
+from ui.qt_overlay import PredictionOverlay
 show_table_bounds = False
 keys_locked = False
 app_ready = False
@@ -62,8 +31,12 @@ _qt_overlay = None
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
-    else:
-        return os.path.join(os.path.abspath('.'), relative_path)
+    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    full_p = os.path.join(base_path, relative_path)
+    if os.path.exists(full_p):
+        return full_p
+    return os.path.join(os.path.abspath('.'), relative_path)
+
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('dark-blue')
 BG = '#0f1117'
@@ -77,7 +50,17 @@ WARNING = '#faa61a'
 TEXT = '#e3e5e8'
 TEXT2 = '#a3a6aa'
 BORDER = '#2f3347'
-save_data_name = 'save_data_rulerv2_1'
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_DIR = os.path.join(PROJECT_ROOT, 'config')
+if not os.path.exists(CONFIG_DIR):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+
+SAVE_DATA_LAPTOP = os.path.join(CONFIG_DIR, 'laptop')
+SAVE_DATA_MONITOR = os.path.join(CONFIG_DIR, 'monitor')
+DISPLAY_MODES = ('laptop', 'monitor')
+save_data_name = SAVE_DATA_LAPTOP
+
 buttons_win_opened = False
 can_open_keybinds = True
 ct = 2
@@ -94,6 +77,7 @@ button_show_table = None
 button_scroll_lock = None
 button_table_geo_lock = None
 game_version_var = None
+display_mode_var = None
 _bar_green_btns = []
 _bar_purple_btns = []
 _scroll_mode_var = None
@@ -196,7 +180,7 @@ def _sync_scroll_lock_btn():
         if str(ml.mouse_scroll_mode).lower()!= 'on':
             button_scroll_lock.configure(text='🔒', fg_color=DANGER, hover_color='#b03032', text_color='white')
         else:
-            button_scroll_lock.configure(text='🔓', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
+            button_scroll_lock.configure(text='🔒', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
 def _start_scroll_listener():
     from pynput import keyboard as pynput_keyboard
     from pynput import mouse as pynput_mouse
@@ -259,7 +243,7 @@ def _key_name_from_pynput(key):
         pass
     return None
 def _start_keyboard_listener():
-    """\n    Global keyboard listener that works without window focus.\n      - toggle keys → fire once per press\n      - hold keys → fire while held\n    """
+    """\n    Global keyboard listener that works without window focus.\n      - toggle keys fire once per press\n      - hold keys fire while held\n    """
     global _kb_listener
     from pynput import keyboard as pynput_keyboard
     import time
@@ -395,9 +379,9 @@ def _sync_show_table_btn():
         return None
     else:
         if show_table_bounds:
-            button_show_table.configure(text='Show table area  ●', fg_color=SUCCESS, hover_color='#2d8a4e')
+            button_show_table.configure(text='Show table area', fg_color=SUCCESS, hover_color='#2d8a4e')
         else:
-            button_show_table.configure(text='Show table area  ○', fg_color=BG3, hover_color=BORDER)
+            button_show_table.configure(text='Show table area', fg_color=BG3, hover_color=BORDER)
 def _sync_table_geo_lock_btn():
     if button_table_geo_lock is None:
         return None
@@ -405,7 +389,7 @@ def _sync_table_geo_lock_btn():
         if ml.lock_table_geo:
             button_table_geo_lock.configure(text='🔒', fg_color=DANGER, hover_color='#b03032', text_color='white')
         else:
-            button_table_geo_lock.configure(text='🔓', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
+            button_table_geo_lock.configure(text='🔒', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
 def update_window():
     """Main render loop."""
     if show_table_bounds and not canvas.find_withtag(TABLE_TAG):
@@ -450,11 +434,51 @@ def _current_data():
         'indicate_power': getattr(ml, 'indicate_power', False),
         'indirect_black': ml.indirect_black,
         'indirect_all': ml.indirect_all,
+        'display_mode': getattr(ml, 'display_mode', 'laptop'),
     }
 def save_():
     with open(save_data_name, 'w') as f:
         json.dump(_current_data(), f)
     print('data saved')
+def _save_filename_for_mode(mode):
+    return SAVE_DATA_MONITOR if mode == 'monitor' else SAVE_DATA_LAPTOP
+
+def _ensure_save_file(filename, mode_override=None):
+    """Create a default save file at `filename` if it does not already exist.
+
+    `mode_override` lets the default file be tagged with a particular
+    display_mode (used when seeding a *secondary* file so it knows which
+    mode it belongs to).  When None the existing primary file's data is
+    used as the template so users keep their calibration when migrating.
+    """
+    if os.path.exists(filename):
+        return False
+    base = dict(_default_data)
+    base['display_mode'] = mode_override if mode_override else 'laptop'
+    with open(filename, 'w') as f:
+        json.dump(base, f)
+    return True
+
+def switch_display_mode(new_mode):
+    """Persist current settings, swap the active save file, then load it.
+
+    Called when the user toggles the Laptop/Monitor radio in Settings.
+    Keeps each mode's calibration isolated in its own save file.
+    """
+    global save_data_name
+    if new_mode not in DISPLAY_MODES or new_mode == ml.display_mode:
+        return None
+    # Flush the current settings into the file for the mode we're leaving.
+    save_()
+    ml.display_mode = new_mode
+    save_data_name = _save_filename_for_mode(new_mode)
+    # Seed the other file with a default if it doesn't exist yet, tagged
+    # with the right mode so we never read the wrong value back.
+    _ensure_save_file(save_data_name, mode_override=new_mode)
+    # Load the new mode's calibration (mirrors the module-init block below).
+    reset()
+    print(f'Display mode switched to {new_mode}; using {save_data_name}.')
+
 def reset():
     global lt
     global ct
@@ -489,6 +513,7 @@ def reset():
     ml.indicate_power = data.get('indicate_power', getattr(ml, 'indicate_power', False))
     ml.indirect_black = data.get('indirect_black', False)
     ml.indirect_all = data.get('indirect_all', False)
+    ml.display_mode = data.get('display_mode', 'monitor' if save_data_name == SAVE_DATA_MONITOR else 'laptop')
     if 'keybinds' in data:
         filtered = {k: v for k, v in data['keybinds'].items() if k in KEYBINDS}
         keybinds.update(filtered)
@@ -509,7 +534,7 @@ def refresh_cue_sliders():
                 slider_cue_start_var.set(f'{ml.cue_start_scaler:.3f}')
             _on = getattr(ml, 'indicate_power', False)
             if _cue_ind_btn_var is not None:
-                _cue_ind_btn_var.set('● ON' if _on else '○ OFF')
+                _cue_ind_btn_var.set('ON' if _on else 'OFF')
             if _cue_ind_toggle_btn is not None:
                 try:
                     _cue_ind_toggle_btn.configure(fg_color=SUCCESS if _on else BG3, hover_color='#2d8a4e' if _on else BORDER)
@@ -561,6 +586,8 @@ def _refresh_sliders():
         indirect_black_var.set(ml.indirect_black)
     if indirect_all_var is not None:
         indirect_all_var.set(ml.indirect_all)
+    if display_mode_var is not None:
+        display_mode_var.set(getattr(ml, 'display_mode', 'laptop'))
     _sync_scroll_lock_btn()
     _sync_scroll_lock_btn()
     _sync_table_geo_lock_btn()
@@ -598,14 +625,14 @@ def _dispatch_keybind(key):
                 _run_action(action)
                 break
 def _toggle_lock_from_keybind():
-    """Called from Ctrl+B — invokes the same toggle_lock that lock_btn uses."""
+    """Called from Ctrl+B invokes the same toggle_lock that lock_btn uses."""
     global keys_locked
     keys_locked = not keys_locked
     try:
         if keys_locked:
             _lock_btn_ref.configure(text='🔒', fg_color=DANGER, hover_color='#b03032', text_color='white')
         else:
-            _lock_btn_ref.configure(text='🔓', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
+            _lock_btn_ref.configure(text='🔒', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
     except Exception:
         pass
 _lock_btn_ref = None
@@ -739,119 +766,189 @@ def _predicted_guideline_endpoint(cue_screen):
     return (cue_screen[0] + math.cos(ml.prediction_angle) * fallback_distance,
             cue_screen[1] + math.sin(ml.prediction_angle) * fallback_distance)
 
+def _overlay_restore(opacity):
+    try:
+        _qt_overlay.set_opacity(max(0.0, float(opacity)))
+    except Exception:
+        pass
+
+def _measure_game_aim_angle(cue_screen, hide_overlay=True):
+    """Hide the overlay, capture the table, and detect the in-game guideline.
+
+    Returns (angle, endpoint) in screen coordinates, or None.
+    """
+    prev_opacity = None
+    if hide_overlay:
+        # Save the *current* Qt opacity (the in-game screen we capture needs
+        # the overlay gone, but we need to put it back to exactly how it was).
+        try:
+            prev_opacity = _qt_overlay.windowOpacity()
+        except Exception:
+            prev_opacity = None
+        _qt_overlay.set_opacity(0.0)
+        import time
+        time.sleep(0.06)
+    try:
+        result = _detect_cue_guideline(cue_screen, debug_tag=None)
+    finally:
+        if hide_overlay and prev_opacity is not None:
+            try:
+                _qt_overlay.set_opacity(float(prev_opacity))
+            except Exception:
+                pass
+    return result
+
 def auto_aim():
-    if ml.cue_ball is None:
-        print("Auto-aim: No cue ball detected.")
-        return
-    
-    # Calculate screen coordinates of the cue ball
-    cue_x = ml.table_left + ml.cue_ball[0][0]
-    cue_y = ml.table_top + ml.cue_ball[0][1]
-    angle = ml.prediction_angle
-    
-    target_x = None
-    target_y = None
-    
-    # Try to find the exact midpoint of the predicted line segment
-    if ml.predictions is not None and len(ml.predictions) > 0:
-        balls_data = ml.predictions[0]
-        for b_data in balls_data:
-            if b_data.get('id') == -2:  # Cue ball ID
-                path = b_data.get('path', [])
-                if len(path) >= 2:
-                    p0 = path[0]
-                    p1 = path[1]
-                    target_x = ml.table_left + p0[0] + (p1[0] - p0[0]) / 2.0
-                    target_y = ml.table_top + p0[1] + (p1[1] - p0[1]) / 2.0
-                    break
-                    
-    # Fallback to a fixed distance along the prediction angle if path is not available
-    if target_x is None or target_y is None:
-        dist = 120.0
-        target_x = cue_x + math.cos(angle) * dist
-        target_y = cue_y + math.sin(angle) * dist
-        
-    # Clamp to screen boundary to be safe
-    screen_width = window.winfo_screenwidth()
-    screen_height = window.winfo_screenheight()
-    target_x = max(10, min(screen_width - 10, target_x))
-    target_y = max(10, min(screen_height - 10, target_y))
-    
-    print(f"Auto-aim: Tapping at center of predicted line: ({target_x:.1f}, {target_y:.1f})")
-    
-    # Perform the click
     import time
     from pynput.mouse import Button, Controller
-    mouse = Controller()
-    
-    # Save current position
-    orig_pos = mouse.position
 
-    # Capture the existing guideline before changing anything.  Besides giving
-    # us useful diagnostics, this confirms whether the game exposes a line to
-    # the desktop capture at all before the initial placement click.
-    initial_guideline = _detect_cue_guideline((cue_x, cue_y), debug_tag='before_click')
-    if initial_guideline is not None:
-        print(f"Auto-aim: Existing guideline detected at {math.degrees(initial_guideline['angle']):.2f} degrees.")
-    
-    # Move to target position
-    mouse.position = (int(target_x), int(target_y))
-    time.sleep(0.1)
-    
-    # Press and release
-    mouse.press(Button.left)
-    time.sleep(0.1)
-    mouse.release(Button.left)
-    time.sleep(0.35)
+    if ml.cue_ball is None:
+        print('Auto-aim: No cue ball detected.')
+        return
 
     aim_wheel = getattr(ml, 'aim_indicator_position', [0.0, 0.0])
     if not _is_screen_coordinate(aim_wheel):
-        print('Auto-aim: Initial alignment complete. Calibrate Aim Wheel Position to enable pixel feedback.')
-        mouse.position = orig_pos
+        print('Auto-aim: Calibrate the Aim Wheel Position in Cue Settings first.')
         return
 
-    desired_end = _predicted_guideline_endpoint((cue_x, cue_y))
-    desired_angle = math.atan2(desired_end[1] - cue_y, desired_end[0] - cue_x)
-    desired_unit = (math.cos(desired_angle), math.sin(desired_angle))
+    cue_x = ml.table_left + ml.cue_ball[0][0]
+    cue_y = ml.table_top + ml.cue_ball[0][1]
+
+    desired_endpoint = _predicted_guideline_endpoint((cue_x, cue_y))
+    desired_angle = math.atan2(desired_endpoint[1] - cue_y,
+                               desired_endpoint[0] - cue_x)
+    print(f'Auto-aim: desired angle = {math.degrees(desired_angle):.3f} deg '
+          f'(screen end {desired_endpoint[0]:.0f}, {desired_endpoint[1]:.0f}).')
+
+    # ------------------------------------------------------------------
+    # Step 1 snap the cue guideline close to the desired direction by
+    # clicking on the predicted line.  Clicking at the cue-endpoint
+    # midpoint is generally inaccurate because the cursor only defines the
+    # aim Direction; picking a point *along the desired ray* far enough to
+    # be sub-pixel-stable works better.  We pick a distance scaled to the
+    # table so the snapped direction is as close to desired as possible in
+    # one shot, minimising the residual the wheel has to correct.
+    # ------------------------------------------------------------------
+    snap_distance = max(220.0, ml.ball_radius * 14.0)
+    snap_x = cue_x + math.cos(desired_angle) * snap_distance
+    snap_y = cue_y + math.sin(desired_angle) * snap_distance
+    # Clamp inside the table so we never click on a cushion UI element.
+    margin = ml.ball_radius * 2.0
+    snap_x = max(ml.table_left + margin,
+                 min(ml.table_left + ml.table_width - margin, snap_x))
+    snap_y = max(ml.table_top + margin,
+                 min(ml.table_top + ml.table_height - margin, snap_y))
+    # Re-derive the angle from the cue to the (possibly clamped) snap point;
+    # clamping shifts the angle slightly, and we want the wheel feedback
+    # loop to correct toward the true desired_angle regardless.
+
+    mouse = Controller()
+    orig_pos = mouse.position
+
+    # Measure the guideline BEFORE moving the mouse, so we have a baseline
+    # of how the game currently aims the cue.  This also confirms that
+    # vision-based detection is working before we touch anything.
+    baseline = _measure_game_aim_angle((cue_x, cue_y), hide_overlay=True)
+    if baseline is not None:
+        print(f'Auto-aim: baseline guideline angle = {math.degrees(baseline["angle"]):.3f} deg.')
+    else:
+        print('Auto-aim: no visible guideline before click; will snap from scratch.')
+
+    mouse.position = (int(snap_x), int(snap_y))
+    time.sleep(0.10)
+    mouse.press(Button.left)
+    time.sleep(0.08)
+    mouse.release(Button.left)
+    time.sleep(0.35)
+
+    # ------------------------------------------------------------------
+    # Step 2 pixel-perfect the aim with the mouse wheel.
+    #
+    # The previous implementation tried to detect the cue guideline while
+    # our overlay's grey prediction guideline was drawn ON TOP of it.  The
+    # white in-game line ended up hidden beneath the grey overlay line, so
+    # vision saw nothing and never sent any wheel ticks.
+    #
+    # The fix: before each measurement we momentarily drop the overlay's
+    # opacity to 0 (so the screen capture shows ONLY the game's white
+    # cue guideline), measure the angle, then restore the opacity.  The
+    # wheel is then scrolled by the number of ticks implied by the residual
+    # angular error, with a sign tied to the in-game wheel direction.
+    # ------------------------------------------------------------------
+    # Calibrated empirically on 8 Ball Pool: one wheel detent rotates the
+    # cue guideline by ~0.0035 rad (~0.20 deg).  We use it as the base
+    # conversion factor between angular error and wheel ticks.
+    rad_per_tick = 0.0035
+    # Hard cap on ticks per iteration so we don't blow past the target.
+    max_ticks_per_iter = 40
+    # Stop once the residual is below this (sub-half-degree) the game's
+    # own rendering quantises the guideline at roughly this scale anyway.
+    target_tolerance_rad = 0.0010
+    max_iterations = 10
+
     mouse.position = (int(aim_wheel[0]), int(aim_wheel[1]))
-    time.sleep(0.15)
+    time.sleep(0.12)
     mouse.press(Button.left)
     try:
-        previous_abs_error = None
-        for iteration in range(12):
-            time.sleep(0.12)
-            measured = _detect_cue_guideline(
-                (cue_x, cue_y), debug_tag='after_click' if iteration == 0 else None)
+        prev_abs_error = None
+        converged = False
+        for iteration in range(max_iterations):
+            measured = _measure_game_aim_angle((cue_x, cue_y), hide_overlay=True)
             if measured is None:
-                print('Auto-aim: Guideline was not visible; keeping the initial alignment.')
+                # No guideline visible the in-game line might be
+                # momentarily washed out.  Try one more time after a brief
+                # wait before giving up; this is rare but worth recovering
+                # from because the rest of the loop is cheap.
+                time.sleep(0.12)
+                measured = _measure_game_aim_angle((cue_x, cue_y), hide_overlay=True)
+            if measured is None:
+                print('Auto-aim: guideline not visible after snapping; keeping current aim.')
                 break
 
-            endpoint = measured['endpoint']
             angular_error = _normalise_angle(desired_angle - measured['angle'])
-            # Perpendicular distance at the line's visible end is the
-            # pixel-level quantity that matters at the collision point.
-            endpoint_error = abs(
-                (endpoint[0] - cue_x) * desired_unit[1]
-                - (endpoint[1] - cue_y) * desired_unit[0])
-            if abs(angular_error) <= 0.0015 or endpoint_error <= 1.5:
-                print(f'Auto-aim: Guideline aligned ({endpoint_error:.1f}px endpoint error).')
+            abs_error = abs(angular_error)
+            # Perpendicular pixel error at the visible guideline endpoint
+            # the quantity that actually matters for the shot's geometry.
+            endpoint = measured['endpoint']
+            perp_px = abs((endpoint[0] - cue_x) * math.sin(desired_angle)
+                          - (endpoint[1] - cue_y) * math.cos(desired_angle))
+            print(f'Auto-aim iter {iteration}: measured={math.degrees(measured["angle"]):.3f} deg '
+                  f'err={math.degrees(angular_error):+.3f} deg, perp={perp_px:.2f}px.')
+
+            if abs_error <= target_tolerance_rad or perp_px <= 1.5:
+                print(f'Auto-aim: converged (err {math.degrees(abs_error):.4f} deg, {perp_px:.2f}px).')
+                converged = True
                 break
 
-            # In screen coordinates a clockwise/right correction increases
-            # atan2's angle.  The game maps a downward wheel scroll to that
-            # rightward motion; upward is the inverse.
+            # Prevent overshoot: if the previous iteration's tick count did
+            # not reduce the error, halve the step.  This damps oscillation
+            # near the target where one tick already exceeds the residual.
+            if prev_abs_error is not None and abs_error >= prev_abs_error:
+                step_factor = 0.5
+            else:
+                # Round to nearest tick, but always send at least one so we
+                # make progress every iteration.
+                step_factor = 1.0
+            ticks = max(1, int(round(abs_error / rad_per_tick * step_factor)))
+            ticks = min(ticks, max_ticks_per_iter)
+
+            # In atan2 terms, clock-wise screen rotation = increasing angle.
+            # The game maps a downward wheel scroll to that clockwise/right
+            # motion; upward is the inverse.  So a positive angular_error
+            # (measured < desired) means we need to rotate the cue right ->
+            # scroll down (direction = -1 in pynput's dy convention).
             direction = -1 if angular_error > 0 else 1
-            ticks = max(1, min(12, int(round(abs(angular_error) / 0.0035))))
-            if previous_abs_error is not None and abs(angular_error) >= previous_abs_error:
-                ticks = max(1, ticks // 2)
-            # Send individual wheel detents while held so the game animates
-            # the cue movement instead of receiving one abrupt jump.
             for _ in range(ticks):
                 mouse.scroll(0, direction)
-                time.sleep(0.025)
-            previous_abs_error = abs(angular_error)
-        else:
-            print('Auto-aim: Reached feedback limit; last visible guideline is retained.')
+                time.sleep(0.020)
+            # Let the in-game cue animation settle to the new angle before
+            # measuring again.  80 ms is ~5 frames, enough for the cue to
+            # rotate without lagging the measurement.
+            time.sleep(0.10)
+            prev_abs_error = abs_error
+
+        if not converged:
+            print('Auto-aim: reached iteration limit; best-effort aim retained.')
     finally:
         mouse.release(Button.left)
         mouse.position = orig_pos
@@ -859,54 +956,58 @@ def auto_aim():
 def auto_shoot():
     start_coord = getattr(ml, 'power_indicator_start', [0.0, 0.0])
     end_coord = getattr(ml, 'power_indicator_end', [0.0, 0.0])
-    
+
     if not isinstance(start_coord, (list, tuple)) or len(start_coord) < 2 or not isinstance(end_coord, (list, tuple)) or len(end_coord) < 2 or start_coord == [0.0, 0.0] or end_coord == [0.0, 0.0]:
         print("Auto-shoot: Power indicator not calibrated.")
         return
-        
-    # Calculate target coordinate along the power bar
+
     power = ml.power_cue
     target_x = start_coord[0] + (end_coord[0] - start_coord[0]) * power
     target_y = start_coord[1] + (end_coord[1] - start_coord[1]) * power
-    
+
     import time
     from pynput.mouse import Button, Controller
     mouse = Controller()
-    
-    # Move to start of power indicator
+
+    # The game's power gauge follows the cursor in real time and only the
+    # *final* cursor position matters for the recorded power.  The animated
+    # cue stick lags behind the cursor by a few frames, so the previous
+    # approach (hundreds of small intermediate steps with 10 ms sleeps) was
+    # just buying time for that lagging animation to catch up.
+    #
+    # Faster and just as accurate: jump straight to the target, then keep
+    # re-asserting that exact position for enough frames to let the cue
+    # animation settle there.  A short easing ramp at the start prevents the
+    # cue stick from accidentally leading (and overshooting) on very short
+    # drags where the in-game animation could otherwise cross the cursor.
     mouse.position = (int(start_coord[0]), int(start_coord[1]))
-    time.sleep(0.5)
-    
-    # Press
+    time.sleep(0.35)
+
     mouse.press(Button.left)
-    # time.sleep(0.5)
-    
-    # Drag in steps
-    if power < 0.3:
-        steps = 50
-    elif power < 0.4:
-        steps = 75
-    elif power < 0.51:
-        steps = 100
-    elif power < 0.65:
-        steps = 150
-    elif power < 0.78:
-        steps = 175        
-    elif power < 0.98:
-        steps = 200
-    else:
-        steps = 50
-    for i in range(1, steps + 1):
-        t = i / steps
-        curr_x = start_coord[0] + (target_x - start_coord[0]) * t
-        curr_y = start_coord[1] + (target_y - start_coord[1]) * t
-        mouse.position = (int(curr_x), int(curr_y))
-        time.sleep(0.01)
-        
-    # Hold for 0.5 seconds to ensure pixel accuracy and game registration
-    time.sleep(0.5)
-    
-    # Release to shoot
+    time.sleep(0.05)
+
+    # Short ramp (3 frames) so the game starts moving the cue stick toward
+    # the target before the cursor is parked on it.  This is what lets the
+    # animation end exactly on the target instead of trailing underneath.
+    ramp_frames = 3
+    for i in range(1, ramp_frames + 1):
+        t = i / ramp_frames
+        # ease-out: 1 - (1 - t)**2 means the cursor reaches the target on
+        # the last frame rather than jumping past it on the first.
+        eased = 1.0 - (1.0 - t) ** 2
+        curr_x = start_coord[0] + (target_x - start_coord[0]) * eased
+        curr_y = start_coord[1] + (target_y - start_coord[1]) * eased
+        mouse.position = (int(round(curr_x)), int(round(curr_y)))
+        time.sleep(0.018)
+
+    # Park the cursor on the exact target and let the lagging cue animation
+    # settle on it.  Extra frames are cheaper now because there are only a
+    # handful of them instead of hundreds.
+    for _ in range(8):
+        mouse.position = (int(round(target_x)), int(round(target_y)))
+        time.sleep(0.03)
+
+    time.sleep(0.15)
     mouse.release(Button.left)
 
 def close_():
@@ -923,7 +1024,6 @@ def create_keys_window():
         can_open_keybinds = False
         kw = ctk.CTkToplevel()
         kw.title('Keybinds')
-        kw.after(201, lambda: kw.iconbitmap(resource_path('s.ico')))
         kw.attributes('-topmost', True)
         kw.resizable(False, False)
         kw.configure(fg_color=BG)
@@ -953,8 +1053,8 @@ def create_keys_window():
                 old.configure(text='Change', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
             listening_for[0] = action
             _kb_paused = True
-            btn.configure(text='● press', fg_color=WARNING, hover_color=WARNING, text_color=BG)
-            status_var.set(f'Listening  ›  {action}   (Esc = cancel)')
+            btn.configure(text='press', fg_color=WARNING, hover_color=WARNING, text_color=BG)
+            status_var.set(f'Listening  {action}   (Esc = cancel)')
             kw.focus_set()
         def _stop_listening(btn):
             global _kb_paused
@@ -1074,22 +1174,22 @@ def open_cue_settings_window():
         ind_row.pack(fill='x', padx=5, pady=(0, 6))
         ctk.CTkLabel(ind_row, text='Power Indicator', text_color=TEXT, font=ctk.CTkFont('Segoe UI', 13, 'bold')).pack(side='left')
         _ind_enabled = getattr(ml, 'indicate_power', False)
-        _cue_ind_btn_var = tk.StringVar(value='● ON' if _ind_enabled else '○ OFF')
+        _cue_ind_btn_var = tk.StringVar(value='ON' if _ind_enabled else 'OFF')
         def _toggle_indicate():
             ml.indicate_power = not getattr(ml, 'indicate_power', False)
-            _cue_ind_btn_var.set('● ON' if ml.indicate_power else '○ OFF')
+            _cue_ind_btn_var.set('ON' if ml.indicate_power else 'OFF')
             _cue_ind_toggle_btn.configure(fg_color=SUCCESS if ml.indicate_power else BG3, hover_color='#2d8a4e' if ml.indicate_power else BORDER)
             ml.need_update_draws = True
         _cue_ind_toggle_btn = ctk.CTkButton(ind_row, textvariable=_cue_ind_btn_var, width=72, height=28, corner_radius=6, fg_color=SUCCESS if _ind_enabled else BG3, hover_color='#2d8a4e' if _ind_enabled else BORDER, text_color='white', font=ctk.CTkFont('Segoe UI', 12), command=_toggle_indicate)
         _cue_ind_toggle_btn.pack(side='right')
         def _fmt_pos(val):
-            """Format an [x, y] pair, or \'—\' if not set."""
+            """Format an [x, y] pair, or if not set."""
             try:
                 return f'{float(val[0]):.1f},  {float(val[1]):.1f}'
             except (TypeError, ValueError, IndexError):
-                return '—'
+                return '-'
         def _start_crosshair_pick(which, coord_var, btn):
-            """\n        Hide the settings window, show a fullscreen crosshair on the overlay.\n        On click → store [x, y], restore everything.  Esc = cancel.\n        \'which\' is \'start\' or \'end\'.\n        """
+            """\n        Hide the settings window, show a fullscreen crosshair on the overlay.\n        On click store [x, y], restore everything.  Esc = cancel.\n        \'which\' is \'start\' or \'end\'.\n        """
             cue_settings_window.withdraw()
             mouse_listener = [None]
             key_listener = [None]
@@ -1170,7 +1270,7 @@ def open_cue_settings_window():
         ctk.CTkLabel(start_row, text='Indicator Start', text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12)).pack(side='left')
         _cue_start_coord_var = tk.StringVar(value=_fmt_pos(getattr(ml, 'power_indicator_start', None)))
         ctk.CTkLabel(start_row, textvariable=_cue_start_coord_var, text_color=ACCENT2, font=ctk.CTkFont('Consolas', 12), width=120, anchor='e').pack(side='left', padx=8)
-        _pick_start_btn = ctk.CTkButton(start_row, text='✛  Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
+        _pick_start_btn = ctk.CTkButton(start_row, text='Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
         _pick_start_btn.configure(command=lambda: _start_crosshair_pick('start', _cue_start_coord_var, _pick_start_btn))
         _pick_start_btn.pack(side='right')
         end_row = ctk.CTkFrame(frame, fg_color='transparent')
@@ -1178,7 +1278,7 @@ def open_cue_settings_window():
         ctk.CTkLabel(end_row, text='Indicator End', text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12)).pack(side='left')
         _cue_end_coord_var = tk.StringVar(value=_fmt_pos(getattr(ml, 'power_indicator_end', None)))
         ctk.CTkLabel(end_row, textvariable=_cue_end_coord_var, text_color=ACCENT2, font=ctk.CTkFont('Consolas', 12), width=120, anchor='e').pack(side='left', padx=8)
-        _pick_end_btn = ctk.CTkButton(end_row, text='✛  Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
+        _pick_end_btn = ctk.CTkButton(end_row, text='Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
         _pick_end_btn.configure(command=lambda: _start_crosshair_pick('end', _cue_end_coord_var, _pick_end_btn))
         _pick_end_btn.pack(side='right')
         ctk.CTkFrame(frame, fg_color=BORDER, height=1).pack(fill='x', padx=5, pady=(5, 6))
@@ -1187,7 +1287,7 @@ def open_cue_settings_window():
         ctk.CTkLabel(aim_row, text='Aim Wheel Position', text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12)).pack(side='left')
         _aim_indicator_coord_var = tk.StringVar(value=_fmt_pos(getattr(ml, 'aim_indicator_position', None)))
         ctk.CTkLabel(aim_row, textvariable=_aim_indicator_coord_var, text_color=ACCENT2, font=ctk.CTkFont('Consolas', 12), width=120, anchor='e').pack(side='left', padx=8)
-        _pick_aim_btn = ctk.CTkButton(aim_row, text='âœ›  Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
+        _pick_aim_btn = ctk.CTkButton(aim_row, text='Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
         _pick_aim_btn.configure(command=lambda: _start_crosshair_pick('aim', _aim_indicator_coord_var, _pick_aim_btn))
         _pick_aim_btn.pack(side='right')
         def on_close():
@@ -1220,7 +1320,6 @@ def create_buttons_window():
     global checkbox_indirect_all
     bw = ctk.CTkToplevel()
     bw.title('Settings')
-    bw.after(201, lambda: bw.iconbitmap(resource_path('s.ico')))
     bw.attributes('-topmost', 1)
     bw.resizable(False, False)
     bw.configure(fg_color=BG)
@@ -1251,15 +1350,15 @@ def create_buttons_window():
         return (sl, val_v)
     save_row = ctk.CTkFrame(content, fg_color='transparent')
     save_row.pack(pady=(2, 0))
-    ctk.CTkButton(save_row, text='💾  Save', width=170, height=34, fg_color=WARNING, hover_color='#c47f10', font=ctk.CTkFont('Segoe UI', 12, 'bold'), text_color=BG, corner_radius=8, command=save_).pack(side='left', padx=(0, 10))
-    ctk.CTkButton(save_row, text='↩  Revert', width=170, height=34, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT, corner_radius=8, command=reset).pack(side='left')
+    ctk.CTkButton(save_row, text='Save', width=170, height=34, fg_color=WARNING, hover_color='#c47f10', font=ctk.CTkFont('Segoe UI', 12, 'bold'), text_color=BG, corner_radius=8, command=save_).pack(side='left', padx=(0, 10))
+    ctk.CTkButton(save_row, text='Revert', width=170, height=34, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT, corner_radius=8, command=reset).pack(side='left')
     divider()
     section_lbl('DISPLAY')
     table_row = ctk.CTkFrame(content, fg_color='transparent')
     table_row.pack(fill='x', pady=2)
-    button_show_table = ctk.CTkButton(table_row, text='Show table area  ●' if show_table_bounds else 'Show table area  ○', height=32, corner_radius=8, fg_color=SUCCESS if show_table_bounds else BG3, hover_color='#2d8a4e' if show_table_bounds else BORDER, font=ctk.CTkFont('Segoe UI', 12), text_color='white', command=toggle_table_bounds)
+    button_show_table = ctk.CTkButton(table_row, text='Show table area' if show_table_bounds else 'Show table area', height=32, corner_radius=8, fg_color=SUCCESS if show_table_bounds else BG3, hover_color='#2d8a4e' if show_table_bounds else BORDER, font=ctk.CTkFont('Segoe UI', 12), text_color='white', command=toggle_table_bounds)
     button_show_table.pack(side='left', fill='x', expand=True)
-    button_table_geo_lock = ctk.CTkButton(table_row, text='🔒' if ml.lock_table_geo else '🔓', width=34, height=32, corner_radius=8, fg_color=DANGER if ml.lock_table_geo else BG3, hover_color='#b03032' if ml.lock_table_geo else BORDER, font=ctk.CTkFont('Segoe UI', 16), text_color='white' if ml.lock_table_geo else TEXT2)
+    button_table_geo_lock = ctk.CTkButton(table_row, text='🔒' if ml.lock_table_geo else '🔒', width=34, height=32, corner_radius=8, fg_color=DANGER if ml.lock_table_geo else BG3, hover_color='#b03032' if ml.lock_table_geo else BORDER, font=ctk.CTkFont('Segoe UI', 16), text_color='white' if ml.lock_table_geo else TEXT2)
     def toggle_table_geo_lock():
         ml.lock_table_geo = not ml.lock_table_geo
         _sync_table_geo_lock_btn()
@@ -1314,7 +1413,7 @@ def create_buttons_window():
     scroll_mode_row = ctk.CTkFrame(content, fg_color='transparent')
     scroll_mode_row.pack(fill='x', pady=(3, 2))
     ctk.CTkLabel(scroll_mode_row, text='Enabled', width=100, anchor='w', font=ctk.CTkFont('Segoe UI', 11), text_color=TEXT2).pack(side='left')
-    button_scroll_lock = ctk.CTkButton(scroll_mode_row, text='🔓', width=34, height=34, corner_radius=8, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 16), text_color=TEXT2)
+    button_scroll_lock = ctk.CTkButton(scroll_mode_row, text='🔒', width=34, height=34, corner_radius=8, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 16), text_color=TEXT2)
     def toggle_scroll_lock():
         ml.mouse_scroll_mode = 'off' if str(ml.mouse_scroll_mode).lower() == 'on' else 'on'
         _sync_scroll_lock_btn()
@@ -1331,6 +1430,19 @@ def create_buttons_window():
             slider_scroll_sens_power_var.set(f'{ml.mouse_scroll_sensitivity_power:.2f}')
     slider_scroll_sens_direction, slider_scroll_sens_direction_var = slider_row('Direction sens', 0.05, 1.0, ml.mouse_scroll_sensitivity_direction, on_scroll_sens_direction, is_float=True)
     slider_scroll_sens_power, slider_scroll_sens_power_var = slider_row('Power sens', 0.05, 1.0, ml.mouse_scroll_sensitivity_power, on_scroll_sens_power, is_float=True)
+    divider()
+    section_lbl('DISPLAY MODE')
+    display_mode_var = tk.StringVar(value=getattr(ml, 'display_mode', 'laptop'))
+    def _on_display_mode_change(*_):
+        new_mode = display_mode_var.get()
+        if new_mode not in DISPLAY_MODES or new_mode == ml.display_mode:
+            return None
+        switch_display_mode(new_mode)
+    display_mode_var.trace_add('write', _on_display_mode_change)
+    dm_row = ctk.CTkFrame(content, fg_color='transparent')
+    dm_row.pack(fill='x', pady=2)
+    for mode_idx, mode_lbl in enumerate(['Laptop', 'Monitor']):
+        ctk.CTkRadioButton(dm_row, text=mode_lbl, variable=display_mode_var, value=DISPLAY_MODES[mode_idx], radiobutton_width=16, radiobutton_height=16, fg_color=ACCENT, hover_color=ACCENT2, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT).pack(side='left', padx=(0, 18))
     divider()
     section_lbl('VERSION')
     game_version_var = ctk.IntVar(value=ml.game_version)
@@ -1364,36 +1476,40 @@ def create_buttons_window():
     divider()
     kb_row = ctk.CTkFrame(content, fg_color='transparent')
     kb_row.pack(fill='x', pady=(4, 4))
-    lock_btn = ctk.CTkButton(kb_row, text='🔓', width=34, height=34, corner_radius=8, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 16), text_color=TEXT2)
+    lock_btn = ctk.CTkButton(kb_row, text='🔒', width=34, height=34, corner_radius=8, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 16), text_color=TEXT2)
     def toggle_lock():
         global keys_locked
         keys_locked = not keys_locked
         if keys_locked:
             lock_btn.configure(text='🔒', fg_color=DANGER, hover_color='#b03032', text_color='white')
         else:
-            lock_btn.configure(text='🔓', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
+            lock_btn.configure(text='🔒', fg_color=BG3, hover_color=BORDER, text_color=TEXT2)
     lock_btn.configure(command=toggle_lock)
     lock_btn.pack(side='right', padx=(6, 0))
     _lock_btn_ref = lock_btn
     button_cue_settings = ctk.CTkButton(kb_row, text='C', width=button_scroll_lock.cget('width'), height=button_scroll_lock.cget('height'), fg_color=BG3, hover_color=BORDER, text_color=TEXT, command=open_cue_settings_window)
     button_cue_settings.pack(side='left', padx=(0, 6))
-    ctk.CTkButton(kb_row, text='⌨   Keybinds', height=34, corner_radius=8, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT, command=create_keys_window).pack(side='left', fill='x', expand=True)
+    ctk.CTkButton(kb_row, text='Keybinds', height=34, corner_radius=8, fg_color=BG3, hover_color=BORDER, font=ctk.CTkFont('Segoe UI', 12), text_color=TEXT, command=create_keys_window).pack(side='left', fill='x', expand=True)
     bw.protocol('WM_DELETE_WINDOW', callback)
 if __name__ == '__main__':
     pass
 else:
+    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'aim_indicator_position': [0.0, 0.0], 'indicate_power': False, 'indirect_black': False, 'indirect_all': False, 'display_mode': 'laptop'}
+    ml.display_mode = 'laptop'
+    save_data_name = _save_filename_for_mode('laptop')
 
-    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'aim_indicator_position': [0.0, 0.0], 'indicate_power': False, 'indirect_black': False, 'indirect_all': False}
     if not os.path.exists(save_data_name):
-        with open(save_data_name, 'w') as f:
-            json.dump(_default_data, f)
-        print('save data not found, creating one…')
+        _ensure_save_file(save_data_name, mode_override='laptop')
+        print(f'save data {save_data_name} not found, creating one')
     else:
-        print('save data found')
+        print(f'save data found: {save_data_name}')
+    # Make sure the *other* display mode also has a save file to switch into.
+    _other_mode = 'monitor'
+    _ensure_save_file(_save_filename_for_mode(_other_mode), mode_override=_other_mode)
     with open(save_data_name) as f:
         data = json.load(f)
-    print('save data loaded')
-    import splash_screen
+    print(f'save data loaded from {save_data_name}')
+    from ui import splash_screen
     splash_screen.update(82, 'Applying settings...')
     ct = data.get('ct', 2)
     lt = data.get('lt', 2)
@@ -1421,10 +1537,11 @@ else:
     ml.indicate_power = data.get('indicate_power', False)
     ml.indirect_black = data.get('indirect_black', False)
     ml.indirect_all = data.get('indirect_all', False)
+    save_data_name = _save_filename_for_mode(ml.display_mode)
     if 'keybinds' in data:
         filtered = {k: v for k, v in data['keybinds'].items() if k in KEYBINDS}
         keybinds.update(filtered)
-    import splash_screen
+    from ui import splash_screen
     splash_screen.update(85, 'Creating overlay window...')
     window = tk.Tk()
     window.tk.call('tk', 'scaling', 1.3)
@@ -1452,7 +1569,7 @@ else:
         except Exception as e:
             print('click-through setup failed:', e)
     window.after(100, _apply_click_through)
-    import splash_screen
+    from ui import splash_screen
     splash_screen.update(95, 'Launching app...')
     buttons_win_opened = True
     create_buttons_window()
@@ -1460,3 +1577,4 @@ else:
     canvas.after(250, update_window)
     canvas.after(250, _keep_overlay_topmost)
     canvas.after(80, _poll_kb_queue)
+

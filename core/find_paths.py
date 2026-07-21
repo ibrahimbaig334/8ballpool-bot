@@ -1,5 +1,5 @@
-import math
-from math2 import *
+﻿import math
+from core.math2 import *
 
 
 def get_adjacent_walls_for_pocket(pocket, ptype, table_width, table_height):
@@ -8,9 +8,9 @@ def get_adjacent_walls_for_pocket(pocket, ptype, table_width, table_height):
     the given pocket.
 
     Rules (billiard physics):
-      - Corner pockets have TWO adjacent walls – the side wall and the end
+      - Corner pockets have TWO adjacent walls ΓÇô the side wall and the end
         wall that meet at that corner.
-      - Mid (side) pockets have ONE adjacent wall – the long rail the pocket
+      - Mid (side) pockets have ONE adjacent wall ΓÇô the long rail the pocket
         sits on.
 
     For a 1-cushion shot these walls are INVALID because the rebounding ball
@@ -665,3 +665,4 @@ def cue_cushion_paths_n(cue_ball, balls, team_type, mid_pockets, corner_pockets,
                 results.append((angle, bounce_points[0], ghost, bpos, pocket))
 
     return results
+

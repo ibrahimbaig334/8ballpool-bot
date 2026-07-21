@@ -11,16 +11,25 @@ global predictions
 global power_cue
 global table_width
 import random
-import model_use
-from simulation_use import simulate_shot
+import os
+import sys
+
+_CORE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_CORE_DIR)
+for _p in [_PROJECT_ROOT, _CORE_DIR, os.path.join(_CORE_DIR, 'binaries')]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from core.simulation_use import simulate_shot
+from vision import model_use
 import pyautogui
 import cv2
 import mss
 import numpy as np
-from math2 import *
+from core.math2 import *
 import time
-import find_paths
-import evaluate_shots
+from core import find_paths
+from core import evaluate_shots
 sct = mss.mss()
 table_left = 200
 table_top = 150
@@ -54,6 +63,7 @@ aim_indicator_position = [0.0, 0.0]
 indicate_power = False
 indirect_black = False
 indirect_all   = False
+display_mode = 'laptop'
 def update_radius():
     global ball_radius
     ball_radius = table_width * 0.0149625
@@ -116,7 +126,7 @@ def ball_inside_table(ball_table):
             return True
 def detect_ball_on_mouse():
     global need_update_draws
-    from tk_window import delete_all_drawings
+    from ui.tk_window import delete_all_drawings
     delete_all_drawings()
     detect_ball(pyautogui.position())
     need_update_draws = True
@@ -253,7 +263,7 @@ def detect_table():
     if lock_table_geo:
         return None
     else:
-        from tk_window import delete_all_drawings
+        from ui.tk_window import delete_all_drawings
         delete_all_drawings()
         w, h, l, t = (0, 0, 0, 0)
         if game_version == 0:
@@ -401,7 +411,7 @@ def draw_power_indicator(indicator_start, indicator_end, power_, line_length, co
         draw_line(s1, e1, color_start)
         draw_line(sm, em, color_power)
 def draw_predictions(draw_circle, draw_line):
-    from simulation_use import POCKETS_SCREEN
+    from core.simulation_use import POCKETS_SCREEN
     behind1 = 1
     cue_length = 1
     if game_version == 0:
@@ -466,7 +476,7 @@ def get_cue_force():
         return 670 + 13 * cue_force + 0.3 * cue_force ** 2
 def detect_balls():
     global need_update_draws
-    from tk_window import delete_all_drawings
+    from ui.tk_window import delete_all_drawings
     delete_all_drawings()
     delete_all_balls()
     roi = {'top': table_top, 'left': table_left, 'width': table_width, 'height': table_height}
@@ -563,12 +573,12 @@ need_update_draws = False
 def get_pockets():
     # POCKETS_SCREEN is refreshed only after a simulation.  Build the middle
     # pockets from the calibrated table instead of using stale/default values.
-    from simulation_use import POCKETS, to_screen_coords
+    from core.simulation_use import POCKETS, to_screen_coords
     corner_pockets = [(ball_radius, ball_radius), (table_width - ball_radius, ball_radius), (table_width - ball_radius, table_height - ball_radius), (ball_radius, table_height - ball_radius)]
     mid_pockets = [to_screen_coords(*POCKETS[index], table_width) for index in (1, 4)]
     return (corner_pockets, mid_pockets)
 def update_draws(draw_circle_fn, draw_line_fn):
-    from tk_window import delete_all_drawings_no_updt, _draw_table_rect
+    from ui.tk_window import delete_all_drawings_no_updt, _draw_table_rect
     delete_all_drawings_no_updt()
     _draw_table_rect()
     calc_predictions()
@@ -580,13 +590,13 @@ def update_draws(draw_circle_fn, draw_line_fn):
     if predictions is not None and cue_ball is not None:
             draw_predictions(draw_circle_fn, draw_line_fn)
 def delete_all_draw():
-    from tk_window import delete_all_drawings_no_updt
+    from ui.tk_window import delete_all_drawings_no_updt
     delete_all_drawings_no_updt()
 def update_canvas():
-    from tk_window import update_canvas_
+    from ui.tk_window import update_canvas_
     update_canvas_()
 def draw_search(balls_data, pocketed, POCKETS_SCREEN):
-    from tk_window import delete_all_drawings_no_updt, update_canvas_, draw_circle, draw_line
+    from ui.tk_window import delete_all_drawings_no_updt, update_canvas_, draw_circle, draw_line
     delete_all_drawings_no_updt()
     cue_pos = (0, 0)
     for ball_data in balls_data:
@@ -747,7 +757,7 @@ def find_shot_x(ball_type_x):
         prediction_angle  = best_shot[0]
         power_cue         = best_shot[1]
         need_update_draws = True
-        from tk_window import _refresh_sliders
+        from ui.tk_window import _refresh_sliders
         _refresh_sliders()
 def angle_score_best_power(angle_, cue_ball_, black_, team_balls_, opp_balls_, cue_cushion_mode=False):
     """

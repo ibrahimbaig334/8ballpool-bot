@@ -1,4 +1,4 @@
-import math
+﻿import math
 TABLE_X_MIN = (-127.0)
 TABLE_X_MAX = 127.0
 TABLE_Y_MIN = (-63.5)
@@ -7,7 +7,7 @@ ball_radius_ev = 3.800475
 MID_POCKET_INDICES = {1, 4}
 action = [None, None, (-0.8531844545073385), 0.5114593102707045, 0.7499797561554263, 0.07825022326845107, 0.9030268601261435, 0.35251917355723783, (-0.7454533974668375)]
 def evaluate_result(balls_data, pocketed, first_hit_id, team_len):
-    from simulation_use import POCKETS
+    from core.simulation_use import POCKETS
     score = 0
     cue_pocketed = any((b['id'] == (-2) for b in pocketed))
     black_pocketed = any((b['id'] == (-1) for b in pocketed))
@@ -40,7 +40,7 @@ def evaluate_result_cushion(balls_data, pocketed, team_len):
       - no team ball was pocketed at all
     Scoring uses the same position-quality metrics as the standard evaluator.
     """
-    from simulation_use import POCKETS
+    from core.simulation_use import POCKETS
     score = 0
     cue_pocketed = any((b['id'] == (-2) for b in pocketed))
     black_pocketed = any((b['id'] == (-1) for b in pocketed))
@@ -86,7 +86,7 @@ def get_valid_cue_grid(balls_data, pocketed):
     min_sep = ball_radius_ev * 2
     return [pos for pos in _CUE_GRID_ALL if not any((math.hypot(pos[0] - ox, pos[1] - oy) < min_sep for ox, oy in obstacles))]
 def parallel_to_y(ball, pocket):
-    """\n    Returns abs(dy) / length — how parallel the ball→pocket direction is to\n    the Y axis.  Values close to 1.0 mean the shot approaches the mid-pocket\n    nearly perpendicularly (straight in); values close to 0.0 mean it runs\n    almost along the rail and cannot drop.\n    """
+    """\n    Returns abs(dy) / length ΓÇö how parallel the ballΓåÆpocket direction is to\n    the Y axis.  Values close to 1.0 mean the shot approaches the mid-pocket\n    nearly perpendicularly (straight in); values close to 0.0 mean it runs\n    almost along the rail and cannot drop.\n    """
     dx = pocket[0] - ball[0]
     dy = pocket[1] - ball[1]
     length = math.hypot(dx, dy)
@@ -116,7 +116,7 @@ def _cue_goes_behind_target(cue_pos, target_pos, ghost_pos):
         t = ((tx - cx) * dx + (ty - cy) * dy) / len_sq
         return t >= 1.0
 def _cue_can_pot_ball(cue_pos, target_pos, target_id, pockets, obstacles_excl_target):
-    """\n    Helper: given a hypothetical cue position, can it pot `target_pos` into\n    at least one pocket?\n\n    Checks per pocket:\n      1. Mid-pocket angle constraint (parallel_to_y >= 0.9).\n      2. Ghost ball is inside table bounds and does not overlap any obstacle.\n      3. The cue does NOT need to travel behind/through the target to reach\n         the ghost (target must not block the cue→ghost segment).\n      4. cue → ghost segment is unobstructed by other balls.\n      5. target → pocket segment is unobstructed.\n\n    `obstacles_excl_target` is a list of (id, pos) tuples for every ball on\n    the table except the target and the cue itself.\n    """
+    """\n    Helper: given a hypothetical cue position, can it pot `target_pos` into\n    at least one pocket?\n\n    Checks per pocket:\n      1. Mid-pocket angle constraint (parallel_to_y >= 0.9).\n      2. Ghost ball is inside table bounds and does not overlap any obstacle.\n      3. The cue does NOT need to travel behind/through the target to reach\n         the ghost (target must not block the cueΓåÆghost segment).\n      4. cue ΓåÆ ghost segment is unobstructed by other balls.\n      5. target ΓåÆ pocket segment is unobstructed.\n\n    `obstacles_excl_target` is a list of (id, pos) tuples for every ball on\n    the table except the target and the cue itself.\n    """
     obstacle_positions = [pos for _, pos in obstacles_excl_target]
     tx, ty = target_pos
     for p_idx, pocket in enumerate(pockets):
@@ -150,7 +150,7 @@ def _cue_can_pot_ball(cue_pos, target_pos, target_id, pockets, obstacles_excl_ta
                             return True
     return False
 def compute_grid_potting_coverage(balls_data, team_len, pocketed, pockets, valid_grid):
-    """\n    Score 1 — Grid potting coverage.\n\n    Counts how many of the pre-filtered valid cue grid positions can pot at\n    least one team ball (or the black when team_len == 0) into at least one\n    pocket.  Overlap filtering is already done in valid_grid; no per-loop\n    check is needed here.\n\n    Returns an integer 0–21.\n    """
+    """\n    Score 1 ΓÇö Grid potting coverage.\n\n    Counts how many of the pre-filtered valid cue grid positions can pot at\n    least one team ball (or the black when team_len == 0) into at least one\n    pocket.  Overlap filtering is already done in valid_grid; no per-loop\n    check is needed here.\n\n    Returns an integer 0ΓÇô21.\n    """
     pocketed_ids = {p['id'] for p in pocketed}
     if not valid_grid:
         return 0
@@ -178,7 +178,7 @@ def compute_grid_potting_coverage(balls_data, team_len, pocketed, pockets, valid
             coverage += 1
     return coverage
 def compute_all_balls_pottable(balls_data, team_len, pocketed, pockets, valid_grid):
-    """\n    Score 2 — All balls pottable.\n\n    Returns 10 if every remaining team ball (or the black when team_len == 0)\n    can be potted from at least one pre-filtered valid cue grid position.\n    Returns 0 if even one ball has no grid position from which it can be potted.\n    Overlap filtering is already done in valid_grid; no per-loop check needed.\n    """
+    """\n    Score 2 ΓÇö All balls pottable.\n\n    Returns 10 if every remaining team ball (or the black when team_len == 0)\n    can be potted from at least one pre-filtered valid cue grid position.\n    Returns 0 if even one ball has no grid position from which it can be potted.\n    Overlap filtering is already done in valid_grid; no per-loop check needed.\n    """
     pocketed_ids = {p['id'] for p in pocketed}
     start_id = 0 if team_len > 0 else (-1)
     targets = []
@@ -205,7 +205,7 @@ def compute_all_balls_pottable(balls_data, team_len, pocketed, pockets, valid_gr
             return 0
     return 10
 def compute_balls_away_from_walls(balls_data, team_len, pocketed):
-    """\n    Score 3 — Balls away from walls.\n\n    Counts how many remaining team balls (and the black when team_len == 0)\n    have their centre at least 3 × ball_radius away from every cushion\n    (i.e. the ball is not hugging any wall).\n\n    Returns the raw count.\n    """
+    """\n    Score 3 ΓÇö Balls away from walls.\n\n    Counts how many remaining team balls (and the black when team_len == 0)\n    have their centre at least 3 ├ù ball_radius away from every cushion\n    (i.e. the ball is not hugging any wall).\n\n    Returns the raw count.\n    """
     min_wall_dist = ball_radius_ev * 3
     pocketed_ids = {p['id'] for p in pocketed}
     start_id = 0 if team_len > 0 else (-1)
@@ -272,7 +272,7 @@ def point_to_segment_distance(px, py, ax, ay, bx, by):
         closest_y = ay + t * aby
         return math.hypot(px - closest_x, py - closest_y)
 def compute_ghost_pos(target_pos, pocket):
-    """\n    Compute the ghost ball position: the point where the cue ball centre\n    must be at the moment of contact to send target_pos toward pocket.\n\n    The ghost ball sits one full ball-diameter behind the target ball on the\n    line (pocket → target):\n        ghost = target + unit(target - pocket) * ball_diameter\n    """
+    """\n    Compute the ghost ball position: the point where the cue ball centre\n    must be at the moment of contact to send target_pos toward pocket.\n\n    The ghost ball sits one full ball-diameter behind the target ball on the\n    line (pocket ΓåÆ target):\n        ghost = target + unit(target - pocket) * ball_diameter\n    """
     ball_diameter = ball_radius_ev * 2
     tx, ty = target_pos
     px, py = pocket
@@ -297,7 +297,7 @@ def ghost_is_valid(ghost_pos, obstacles_positions, x_min=TABLE_X_MIN, x_max=TABL
                 return False
         return True
 def count_clear_pockets(ball_id, pockets, balls_data, pocketed):
-    """\n    Returns how many pockets have a clear straight path from ball_id\'s\n    final_pos to the pocket, taking into account:\n\n      0. [Mid-pockets only] ball→pocket direction must satisfy\n         parallel_to_y >= 0.9 (nearly perpendicular to long rail).\n      1. Ghost ball position is inside table bounds.\n      2. Ghost ball position does not overlap any other ball.\n      3. The straight line ball → pocket is unobstructed.\n    """
+    """\n    Returns how many pockets have a clear straight path from ball_id\'s\n    final_pos to the pocket, taking into account:\n\n      0. [Mid-pockets only] ballΓåÆpocket direction must satisfy\n         parallel_to_y >= 0.9 (nearly perpendicular to long rail).\n      1. Ghost ball position is inside table bounds.\n      2. Ghost ball position does not overlap any other ball.\n      3. The straight line ball ΓåÆ pocket is unobstructed.\n    """
     pocketed_ids = {p['id'] for p in pocketed}
     target_ball = next((b for b in balls_data if b['id'] == ball_id), None)
     if not target_ball:
@@ -331,7 +331,7 @@ def count_clear_pockets(ball_id, pockets, balls_data, pocketed):
             clear_count += 1
     return clear_count
 def compute_openness_cue2(balls_data, team_len, pocketed, pockets):
-    """\n    Returns fraction of team balls that have at least one valid pocket where:\n      - [Mid-pockets only] target ball→pocket direction satisfies\n        parallel_to_y >= 0.9,\n      - ghost position is inside the table and does not overlap any ball,\n      - cue → ghost segment is unobstructed,\n      - target ball → pocket segment is unobstructed.\n\n    cue ball id = -2\n    team balls ids = 0 to team_len-1\n    """
+    """\n    Returns fraction of team balls that have at least one valid pocket where:\n      - [Mid-pockets only] target ballΓåÆpocket direction satisfies\n        parallel_to_y >= 0.9,\n      - ghost position is inside the table and does not overlap any ball,\n      - cue ΓåÆ ghost segment is unobstructed,\n      - target ball ΓåÆ pocket segment is unobstructed.\n\n    cue ball id = -2\n    team balls ids = 0 to team_len-1\n    """
     pocketed_ids = {p['id'] for p in pocketed}
     cue = next((b for b in balls_data if b['id'] == (-2)), None)
     if cue is None:
@@ -439,3 +439,4 @@ def count_clear_pockets_legacy(ball_id, pockets, balls_data, pocketed):
             if not blocked:
                 clear_count += 1
         return clear_count
+

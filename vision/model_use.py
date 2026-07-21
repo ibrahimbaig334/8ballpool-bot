@@ -7,13 +7,21 @@ import onnxruntime as ort
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
-    else:
-        return os.path.join(os.path.abspath('.'), relative_path)
+    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    full_p = os.path.join(base_path, relative_path)
+    if os.path.exists(full_p):
+        return full_p
+    return os.path.join(os.path.abspath('.'), relative_path)
+
 DETECTION_SIZE = 100
 CLASSIFIER_SIZE = 25
 CLASS_NAMES = ['solid', 'stripe', 'cue', 'black']
-det_path = resource_path('model_ball/best.onnx')
-clf_path = resource_path('model_ball/best_classifier.onnx')
+det_path = resource_path('assets/model_ball/best.onnx')
+if not os.path.exists(det_path):
+    det_path = resource_path('model_ball/best.onnx')
+clf_path = resource_path('assets/model_ball/best_classifier.onnx')
+if not os.path.exists(clf_path):
+    clf_path = resource_path('model_ball/best_classifier.onnx')
 _det_session = ort.InferenceSession(det_path)
 _clf_session = ort.InferenceSession(clf_path)
 _sct = mss.mss()

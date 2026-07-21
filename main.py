@@ -1,9 +1,24 @@
 import ctypes
+import os
 import sys
 import tkinter as tk
 from tkinter import messagebox
 import traceback
-import splash_screen
+
+# Setup sys.path for structured package layout
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+for path in [
+    PROJECT_ROOT,
+    os.path.join(PROJECT_ROOT, 'core'),
+    os.path.join(PROJECT_ROOT, 'core', 'binaries'),
+    os.path.join(PROJECT_ROOT, 'ui'),
+    os.path.join(PROJECT_ROOT, 'vision'),
+]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+from ui import splash_screen
+
 class SingleInstanceChecker:
     def __init__(self):
         self.mutex_name = 'Ibrahim Baig Ruler'
@@ -20,6 +35,7 @@ class SingleInstanceChecker:
                 self.mutex = None
             except:
                 pass
+
 instance_checker = SingleInstanceChecker()
 if instance_checker.is_already_running():
     root_temp = tk.Tk()
@@ -27,11 +43,13 @@ if instance_checker.is_already_running():
     messagebox.showerror('Already Running', 'Ibrahim Baig Ruler is already running!\nPlease close the existing instance first.')
     root_temp.destroy()
     sys.exit(0)
+
 def show_error(msg):
     root = tk.Tk()
     root.withdraw()
     messagebox.showerror('Startup Error', msg)
     root.destroy()
+
 try:
     try:
         splash_screen.start()
@@ -39,11 +57,11 @@ try:
         splash_screen.update(20, 'Loading UI framework...')
         import customtkinter
         splash_screen.update(40, 'Loading AI model...')
-        import model_use
+        from vision import model_use
         splash_screen.update(70, 'Loading math engine...')
-        import math_logic
+        from core import math_logic
         splash_screen.update(80, 'Loading interface...')
-        import tk_window
+        from ui import tk_window
         splash_screen.close()
         tk_window.app_ready = True
         tk_window.window.mainloop()

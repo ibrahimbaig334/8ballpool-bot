@@ -1,9 +1,15 @@
-global POCKETS_SCREEN
+import os
+import sys
 import math
 import random
-import sys
+
+_CORE_DIR = os.path.dirname(os.path.abspath(__file__))
+_BINARIES_DIR = os.path.join(_CORE_DIR, 'binaries')
+if _BINARIES_DIR not in sys.path:
+    sys.path.insert(0, _BINARIES_DIR)
+
 try:
-    import simulate_core
+    from binaries import simulate_core
 except ImportError:
     print('Error: Could not import simulate_core. Make sure you have compiled the C++ script with pybind11.')
     sys.exit(1)
