@@ -49,3 +49,5 @@ Ibrahim Baig Ruler is an advanced predictive helper and overlay bot for **8 Ball
     ```powershell
     .venv\Scripts\python.exe main.py
     ```
+
+vulture . --exclude .venv,**pycache**,.ruff_cache
