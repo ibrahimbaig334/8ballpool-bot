@@ -1,5 +1,6 @@
 customtkinter==5.2.2
 numpy
+opencv-python
 onnxruntime
 mss
 pyautogui
