@@ -459,6 +459,40 @@ def _ensure_save_file(filename, mode_override=None):
         json.dump(base, f)
     return True
 
+def update_overlay_screen_position(mode=None):
+    """Move both Qt and Tk overlay windows to the primary or secondary screen.
+    If 'monitor' is selected but no secondary display is detected, shows a warning
+    messagebox and reverts the mode to 'laptop'.
+    """
+    if mode is None:
+        mode = getattr(ml, 'display_mode', 'laptop')
+    if _qt_overlay is None or window is None:
+        return True
+
+    screens = _qt_overlay._app.screens()
+    primary = _qt_overlay._app.primaryScreen()
+    other_screens = [s for s in screens if s != primary]
+
+    if mode == 'monitor':
+        if not other_screens:
+            messagebox.showwarning(
+                'Secondary Monitor Not Found',
+                'Secondary monitor is not connected!\nReverting to Laptop (primary screen).'
+            )
+            ml.display_mode = 'laptop'
+            if display_mode_var is not None:
+                display_mode_var.set('laptop')
+            target_screen = primary
+        else:
+            target_screen = other_screens[0]
+    else:
+        target_screen = primary
+
+    geo = target_screen.geometry()
+    _qt_overlay.setGeometry(geo)
+    window.geometry(f'{geo.width()}x{geo.height()}+{geo.x()}+{geo.y()}')
+    return True
+
 def switch_display_mode(new_mode):
     """Persist current settings, swap the active save file, then load it.
 
@@ -477,6 +511,7 @@ def switch_display_mode(new_mode):
     _ensure_save_file(save_data_name, mode_override=new_mode)
     # Load the new mode's calibration (mirrors the module-init block below).
     reset()
+    update_overlay_screen_position(new_mode)
     print(f'Display mode switched to {new_mode}; using {save_data_name}.')
 
 def reset():
@@ -671,28 +706,7 @@ def _point_to_segment_distance(point, start, end):
 def _normalise_angle(angle):
     return (angle + math.pi) % (2.0 * math.pi) - math.pi
 
-def _save_aim_debug_capture(frame, white_mask, cue_local, lines, selected_line, tag):
-    """Save raw, thresholded and annotated table captures for aim tuning."""
-    import time
-    debug_dir = os.path.join(os.getcwd(), 'auto_aim_debug')
-    os.makedirs(debug_dir, exist_ok=True)
-    stamp = time.strftime('%Y%m%d_%H%M%S') + f'_{int(time.time() * 1000) % 1000:03d}'
-    prefix = os.path.join(debug_dir, f'{stamp}_{tag}')
-    bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-    annotated = bgr.copy()
-    if lines is not None:
-        for x1, y1, x2, y2 in lines[:, 0]:
-            cv2.line(annotated, (int(x1), int(y1)), (int(x2), int(y2)), (0, 180, 255), 1)
-    if selected_line is not None:
-        start, end = selected_line
-        cv2.line(annotated, tuple(map(int, start)), tuple(map(int, end)), (0, 255, 0), 3)
-    cv2.circle(annotated, tuple(map(int, cue_local)), max(4, int(ml.ball_radius)), (255, 0, 255), 2)
-    cv2.imwrite(prefix + '_raw.png', bgr)
-    cv2.imwrite(prefix + '_white_mask.png', white_mask)
-    cv2.imwrite(prefix + '_annotated.png', annotated)
-    print(f'Auto-aim debug saved: {os.path.abspath(prefix)}_[raw|white_mask|annotated].png')
-
-def _detect_cue_guideline(cue_screen, debug_tag=None):
+def _detect_cue_guideline(cue_screen):
     """Find the bright guideline connected to the cue ball.
 
     The search is restricted to the calibrated table and only accepts a long,
@@ -719,8 +733,6 @@ def _detect_cue_guideline(cue_screen, debug_tag=None):
         minLineLength=minimum_length, maxLineGap=max(8, int(ml.ball_radius * 1.2)))
     cue_local = (cue_screen[0] - ml.table_left, cue_screen[1] - ml.table_top)
     if lines is None:
-        if debug_tag is not None:
-            _save_aim_debug_capture(frame, white, cue_local, None, None, debug_tag)
         return None
 
     best = None
@@ -742,12 +754,8 @@ def _detect_cue_guideline(cue_screen, debug_tag=None):
             best = (score, (ml.table_left + far[0], ml.table_top + far[1]), (start, end))
 
     if best is None:
-        if debug_tag is not None:
-            _save_aim_debug_capture(frame, white, cue_local, lines, None, debug_tag)
         return None
     endpoint = best[1]
-    if debug_tag is not None:
-        _save_aim_debug_capture(frame, white, cue_local, lines, best[2], debug_tag)
     return {
         'endpoint': endpoint,
         'angle': math.atan2(endpoint[1] - cue_screen[1], endpoint[0] - cue_screen[0]),
@@ -789,7 +797,7 @@ def _measure_game_aim_angle(cue_screen, hide_overlay=True):
         import time
         time.sleep(0.06)
     try:
-        result = _detect_cue_guideline(cue_screen, debug_tag=None)
+        result = _detect_cue_guideline(cue_screen)
     finally:
         if hide_overlay and prev_opacity is not None:
             try:
@@ -989,7 +997,7 @@ def auto_shoot():
     # Short ramp (3 frames) so the game starts moving the cue stick toward
     # the target before the cursor is parked on it.  This is what lets the
     # animation end exactly on the target instead of trailing underneath.
-    ramp_frames = 3
+    ramp_frames = 50
     for i in range(1, ramp_frames + 1):
         t = i / ramp_frames
         # ease-out: 1 - (1 - t)**2 means the cursor reaches the target on
@@ -1003,7 +1011,7 @@ def auto_shoot():
     # Park the cursor on the exact target and let the lagging cue animation
     # settle on it.  Extra frames are cheaper now because there are only a
     # handful of them instead of hundreds.
-    for _ in range(8):
+    for _ in range(20):
         mouse.position = (int(round(target_x)), int(round(target_y)))
         time.sleep(0.03)
 
@@ -1557,6 +1565,7 @@ else:
     canvas.pack(fill=tk.BOTH, expand=True)
     _qt_overlay = PredictionOverlay()
     _qt_overlay.set_opacity(tr * 0.1)
+    update_overlay_screen_position()
     def _apply_click_through():
         try:
             hwnd = ctypes.windll.user32.GetAncestor(canvas.winfo_id(), 2)
