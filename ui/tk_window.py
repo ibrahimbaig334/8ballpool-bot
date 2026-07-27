@@ -459,40 +459,6 @@ def _ensure_save_file(filename, mode_override=None):
         json.dump(base, f)
     return True
 
-def update_overlay_screen_position(mode=None):
-    """Move both Qt and Tk overlay windows to the primary or secondary screen.
-    If 'monitor' is selected but no secondary display is detected, shows a warning
-    messagebox and reverts the mode to 'laptop'.
-    """
-    if mode is None:
-        mode = getattr(ml, 'display_mode', 'laptop')
-    if _qt_overlay is None or window is None:
-        return True
-
-    screens = _qt_overlay._app.screens()
-    primary = _qt_overlay._app.primaryScreen()
-    other_screens = [s for s in screens if s != primary]
-
-    if mode == 'monitor':
-        if not other_screens:
-            messagebox.showwarning(
-                'Secondary Monitor Not Found',
-                'Secondary monitor is not connected!\nReverting to Laptop (primary screen).'
-            )
-            ml.display_mode = 'laptop'
-            if display_mode_var is not None:
-                display_mode_var.set('laptop')
-            target_screen = primary
-        else:
-            target_screen = other_screens[0]
-    else:
-        target_screen = primary
-
-    geo = target_screen.geometry()
-    _qt_overlay.setGeometry(geo)
-    window.geometry(f'{geo.width()}x{geo.height()}+{geo.x()}+{geo.y()}')
-    return True
-
 def switch_display_mode(new_mode):
     """Persist current settings, swap the active save file, then load it.
 
@@ -511,7 +477,6 @@ def switch_display_mode(new_mode):
     _ensure_save_file(save_data_name, mode_override=new_mode)
     # Load the new mode's calibration (mirrors the module-init block below).
     reset()
-    update_overlay_screen_position(new_mode)
     print(f'Display mode switched to {new_mode}; using {save_data_name}.')
 
 def reset():
@@ -1565,7 +1530,6 @@ else:
     canvas.pack(fill=tk.BOTH, expand=True)
     _qt_overlay = PredictionOverlay()
     _qt_overlay.set_opacity(tr * 0.1)
-    update_overlay_screen_position()
     def _apply_click_through():
         try:
             hwnd = ctypes.windll.user32.GetAncestor(canvas.winfo_id(), 2)
