@@ -935,8 +935,10 @@ def auto_shoot():
         return
 
     power = ml.power_cue
-    target_x = start_coord[0] + (end_coord[0] - start_coord[0]) * power
-    target_y = start_coord[1] + (end_coord[1] - start_coord[1]) * power
+    dx = end_coord[0] - start_coord[0]
+    dy = end_coord[1] - start_coord[1]
+    target_x = start_coord[0] + dx * power
+    target_y = start_coord[1] + dy * power
 
     import time
     from pynput.mouse import Button, Controller
@@ -948,15 +950,31 @@ def auto_shoot():
     mouse.press(Button.left)
     time.sleep(0.05)
 
-    ramp_frames = 10
-    for i in range(1, ramp_frames + 1):
-        t = i / ramp_frames
+    def ease_move(from_x, from_y, to_x, to_y, frames, frame_sleep=0.018):
+        for i in range(1, frames + 1):
+            t = i / frames
+            eased = 1.0 - (1.0 - t) ** 2
+            curr_x = from_x + (to_x - from_x) * eased
+            curr_y = from_y + (to_y - from_y) * eased
+            mouse.position = (int(round(curr_x)), int(round(curr_y)))
+            time.sleep(frame_sleep)
 
-        eased = 1.0 - (1.0 - t) ** 2
-        curr_x = start_coord[0] + (target_x - start_coord[0]) * eased
-        curr_y = start_coord[1] + (target_y - start_coord[1]) * eased
-        mouse.position = (int(round(curr_x)), int(round(curr_y)))
-        time.sleep(0.018)
+    ramp_frames = 10
+    ease_move(start_coord[0], start_coord[1], target_x, target_y, ramp_frames)
+
+    # Pull-back nudge: once the cursor reaches the target, smoothly retreat
+    # 10% of the full start->end pull distance back toward
+    # power_indicator_start, then smoothly return to the target once. This
+    # gives the game's cue-follow animation a deliberate "correction" move
+    # to track right as the drag finishes, so the rendered cue settles in
+    # sync with the target instead of the cursor just parking there while
+    # the animation is still easing toward it. Both legs are ramped the
+    # same way as the initial pull so the cursor never jerks/teleports.
+    retreat_x = target_x - dx * 0.01
+    retreat_y = target_y - dy * 0.01
+    nudge_frames = 5
+    ease_move(target_x, target_y, retreat_x, retreat_y, nudge_frames, frame_sleep=0.1)
+    ease_move(retreat_x, retreat_y, target_x, target_y, nudge_frames, frame_sleep=0.1)
 
     for _ in range(10):
         mouse.position = (int(round(target_x)), int(round(target_y)))
@@ -1532,4 +1550,3 @@ else:
     canvas.after(250, update_window)
     canvas.after(250, _keep_overlay_topmost)
     canvas.after(80, _poll_kb_queue)
-
