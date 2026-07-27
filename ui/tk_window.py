@@ -942,41 +942,23 @@ def auto_shoot():
     from pynput.mouse import Button, Controller
     mouse = Controller()
 
-    # The game's power gauge follows the cursor in real time and only the
-    # *final* cursor position matters for the recorded power.  The animated
-    # cue stick lags behind the cursor by a few frames, so the previous
-    # approach (hundreds of small intermediate steps with 10 ms sleeps) was
-    # just buying time for that lagging animation to catch up.
-    #
-    # Faster and just as accurate: jump straight to the target, then keep
-    # re-asserting that exact position for enough frames to let the cue
-    # animation settle there.  A short easing ramp at the start prevents the
-    # cue stick from accidentally leading (and overshooting) on very short
-    # drags where the in-game animation could otherwise cross the cursor.
     mouse.position = (int(start_coord[0]), int(start_coord[1]))
     time.sleep(0.35)
 
     mouse.press(Button.left)
     time.sleep(0.05)
 
-    # Short ramp (3 frames) so the game starts moving the cue stick toward
-    # the target before the cursor is parked on it.  This is what lets the
-    # animation end exactly on the target instead of trailing underneath.
-    ramp_frames = 50
+    ramp_frames = 10
     for i in range(1, ramp_frames + 1):
         t = i / ramp_frames
-        # ease-out: 1 - (1 - t)**2 means the cursor reaches the target on
-        # the last frame rather than jumping past it on the first.
+
         eased = 1.0 - (1.0 - t) ** 2
         curr_x = start_coord[0] + (target_x - start_coord[0]) * eased
         curr_y = start_coord[1] + (target_y - start_coord[1]) * eased
         mouse.position = (int(round(curr_x)), int(round(curr_y)))
         time.sleep(0.018)
 
-    # Park the cursor on the exact target and let the lagging cue animation
-    # settle on it.  Extra frames are cheaper now because there are only a
-    # handful of them instead of hundreds.
-    for _ in range(20):
+    for _ in range(10):
         mouse.position = (int(round(target_x)), int(round(target_y)))
         time.sleep(0.03)
 
