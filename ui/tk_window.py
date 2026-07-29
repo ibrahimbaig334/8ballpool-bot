@@ -1,4 +1,4 @@
-﻿import math
+import math
 import queue
 import threading
 import tkinter as tk
@@ -91,7 +91,6 @@ _cue_ind_btn_var = None
 _cue_ind_toggle_btn = None
 _cue_start_coord_var = None
 _cue_end_coord_var = None
-_aim_indicator_coord_var = None
 indirect_black_var = None
 indirect_all_var = None
 checkbox_indirect_black = None
@@ -430,7 +429,6 @@ def _current_data():
         'cue_start_scaler': ml.cue_start_scaler,
         'power_indicator_start': getattr(ml, 'power_indicator_start', [0.0, 0.0]),
         'power_indicator_end': getattr(ml, 'power_indicator_end', [0.0, 0.0]),
-        'aim_indicator_position': getattr(ml, 'aim_indicator_position', [0.0, 0.0]),
         'indicate_power': getattr(ml, 'indicate_power', False),
         'indirect_black': ml.indirect_black,
         'indirect_all': ml.indirect_all,
@@ -509,7 +507,6 @@ def reset():
     ml.cue_start_scaler = data.get('cue_start_scaler', ml.cue_start_scaler)
     ml.power_indicator_start = data.get('power_indicator_start', getattr(ml, 'power_indicator_start', [0.0, 0.0]))
     ml.power_indicator_end = data.get('power_indicator_end', getattr(ml, 'power_indicator_end', [0.0, 0.0]))
-    ml.aim_indicator_position = data.get('aim_indicator_position', getattr(ml, 'aim_indicator_position', [0.0, 0.0]))
     ml.indicate_power = data.get('indicate_power', getattr(ml, 'indicate_power', False))
     ml.indirect_black = data.get('indirect_black', False)
     ml.indirect_all = data.get('indirect_all', False)
@@ -552,12 +549,6 @@ def refresh_cue_sliders():
                     _cue_end_coord_var.set(f'{float(e[0]):.1f},  {float(e[1]):.1f}')
                 except Exception:
                     _cue_end_coord_var.set('—')
-            if _aim_indicator_coord_var is not None:
-                a = getattr(ml, 'aim_indicator_position', [0.0, 0.0])
-                try:
-                    _aim_indicator_coord_var.set(f'{float(a[0]):.1f},  {float(a[1]):.1f}')
-                except Exception:
-                    _aim_indicator_coord_var.set('not set')
 def _refresh_sliders():
     try:
         if slider_power is not None:
@@ -668,109 +659,6 @@ def _point_to_segment_distance(point, start, end):
     t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / length_sq))
     return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
 
-def _normalise_angle(angle):
-    return (angle + math.pi) % (2.0 * math.pi) - math.pi
-
-def _detect_cue_guideline(cue_screen):
-    """Find the bright guideline connected to the cue ball.
-
-    The search is restricted to the calibrated table and only accepts a long,
-    low-saturation white segment that begins near the cue ball.  This avoids
-    UI chrome and other white balls while returning the line endpoint that is
-    relevant for accurate aim alignment.
-    """
-    try:
-        roi = {'top': int(ml.table_top), 'left': int(ml.table_left),
-               'width': int(ml.table_width), 'height': int(ml.table_height)}
-        frame = np.array(ml.sct.grab(roi))
-    except Exception as exc:
-        print(f'Auto-aim: Could not capture table for guideline detection: {exc}')
-        return None
-
-    bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-    # The game guideline is white; retain high-value, nearly colourless pixels.
-    white = cv2.inRange(hsv, np.array((0, 0, 170)), np.array((180, 100, 255)))
-    white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-    minimum_length = max(30, int(ml.ball_radius * 2.2))
-    lines = cv2.HoughLinesP(
-        white, 1, np.pi / 720, threshold=max(18, int(ml.ball_radius * 1.5)),
-        minLineLength=minimum_length, maxLineGap=max(8, int(ml.ball_radius * 1.2)))
-    cue_local = (cue_screen[0] - ml.table_left, cue_screen[1] - ml.table_top)
-    if lines is None:
-        return None
-
-    best = None
-    for line in lines[:, 0]:
-        x1, y1, x2, y2 = (float(v) for v in line)
-        start, end = (x1, y1), (x2, y2)
-        length = math.hypot(x2 - x1, y2 - y1)
-        distance = _point_to_segment_distance(cue_local, start, end)
-        if distance > ml.ball_radius * 1.65 or length < minimum_length:
-            continue
-        # The endpoint farther from the cue is the visible end before the
-        # first collision/cushion.  It is more stable than Hough's ordering.
-        far = max((start, end), key=lambda p: math.hypot(p[0] - cue_local[0], p[1] - cue_local[1]))
-        far_distance = math.hypot(far[0] - cue_local[0], far[1] - cue_local[1])
-        if far_distance < ml.ball_radius * 2.5:
-            continue
-        score = length + far_distance - distance * 3.0
-        if best is None or score > best[0]:
-            best = (score, (ml.table_left + far[0], ml.table_top + far[1]), (start, end))
-
-    if best is None:
-        return None
-    endpoint = best[1]
-    return {
-        'endpoint': endpoint,
-        'angle': math.atan2(endpoint[1] - cue_screen[1], endpoint[0] - cue_screen[0]),
-    }
-
-def _predicted_guideline_endpoint(cue_screen):
-    """Return the first predicted cue-path endpoint, or a safe ray fallback."""
-    if ml.predictions is not None:
-        for ball_data in ml.predictions[0]:
-            if ball_data.get('id') == -2:
-                path = ball_data.get('path', [])
-                if len(path) >= 2:
-                    point = path[1]
-                    return (ml.table_left + point[0], ml.table_top + point[1])
-    fallback_distance = max(160.0, ml.ball_radius * 12.0)
-    return (cue_screen[0] + math.cos(ml.prediction_angle) * fallback_distance,
-            cue_screen[1] + math.sin(ml.prediction_angle) * fallback_distance)
-
-def _overlay_restore(opacity):
-    try:
-        _qt_overlay.set_opacity(max(0.0, float(opacity)))
-    except Exception:
-        pass
-
-def _measure_game_aim_angle(cue_screen, hide_overlay=True):
-    """Hide the overlay, capture the table, and detect the in-game guideline.
-
-    Returns (angle, endpoint) in screen coordinates, or None.
-    """
-    prev_opacity = None
-    if hide_overlay:
-        # Save the *current* Qt opacity (the in-game screen we capture needs
-        # the overlay gone, but we need to put it back to exactly how it was).
-        try:
-            prev_opacity = _qt_overlay.windowOpacity()
-        except Exception:
-            prev_opacity = None
-        _qt_overlay.set_opacity(0.0)
-        import time
-        time.sleep(0.06)
-    try:
-        result = _detect_cue_guideline(cue_screen)
-    finally:
-        if hide_overlay and prev_opacity is not None:
-            try:
-                _qt_overlay.set_opacity(float(prev_opacity))
-            except Exception:
-                pass
-    return result
-
 def auto_aim():
     import time
     from pynput.mouse import Button, Controller
@@ -779,152 +667,32 @@ def auto_aim():
         print('Auto-aim: No cue ball detected.')
         return
 
-    aim_wheel = getattr(ml, 'aim_indicator_position', [0.0, 0.0])
-    if not _is_screen_coordinate(aim_wheel):
-        print('Auto-aim: Calibrate the Aim Wheel Position in Cue Settings first.')
+    if ml.predictions is None:
+        ml.calc_predictions()
+
+    if ml.predictions is None or len(ml.predictions) == 0 or ml.predictions[0] is None:
+        print('Auto-aim: No prediction path available.')
         return
 
-    cue_x = ml.table_left + ml.cue_ball[0][0]
-    cue_y = ml.table_top + ml.cue_ball[0][1]
+    cue_path = None
+    for ball_data in ml.predictions[0]:
+        if ball_data.get('id') == -2:
+            cue_path = ball_data.get('path', [])
+            break
 
-    desired_endpoint = _predicted_guideline_endpoint((cue_x, cue_y))
-    desired_angle = math.atan2(desired_endpoint[1] - cue_y,
-                               desired_endpoint[0] - cue_x)
-    print(f'Auto-aim: desired angle = {math.degrees(desired_angle):.3f} deg '
-          f'(screen end {desired_endpoint[0]:.0f}, {desired_endpoint[1]:.0f}).')
+    if not cue_path or len(cue_path) < 2:
+        print('Auto-aim: Cue ball first touch prediction path not found.')
+        return
 
-    # ------------------------------------------------------------------
-    # Step 1 snap the cue guideline close to the desired direction by
-    # clicking on the predicted line.  Clicking at the cue-endpoint
-    # midpoint is generally inaccurate because the cursor only defines the
-    # aim Direction; picking a point *along the desired ray* far enough to
-    # be sub-pixel-stable works better.  We pick a distance scaled to the
-    # table so the snapped direction is as close to desired as possible in
-    # one shot, minimising the residual the wheel has to correct.
-    # ------------------------------------------------------------------
-    snap_distance = max(220.0, ml.ball_radius * 14.0)
-    snap_x = cue_x + math.cos(desired_angle) * snap_distance
-    snap_y = cue_y + math.sin(desired_angle) * snap_distance
-    # Clamp inside the table so we never click on a cushion UI element.
-    margin = ml.ball_radius * 2.0
-    snap_x = max(ml.table_left + margin,
-                 min(ml.table_left + ml.table_width - margin, snap_x))
-    snap_y = max(ml.table_top + margin,
-                 min(ml.table_top + ml.table_height - margin, snap_y))
-    # Re-derive the angle from the cue to the (possibly clamped) snap point;
-    # clamping shifts the angle slightly, and we want the wheel feedback
-    # loop to correct toward the true desired_angle regardless.
-
+    first_touch_canvas = cue_path[1]
+    target_screen_x = ml.table_left + first_touch_canvas[0]
+    target_screen_y = ml.table_top + first_touch_canvas[1]
     mouse = Controller()
-    orig_pos = mouse.position
-
-    # Measure the guideline BEFORE moving the mouse, so we have a baseline
-    # of how the game currently aims the cue.  This also confirms that
-    # vision-based detection is working before we touch anything.
-    baseline = _measure_game_aim_angle((cue_x, cue_y), hide_overlay=True)
-    if baseline is not None:
-        print(f'Auto-aim: baseline guideline angle = {math.degrees(baseline["angle"]):.3f} deg.')
-    else:
-        print('Auto-aim: no visible guideline before click; will snap from scratch.')
-
-    mouse.position = (int(snap_x), int(snap_y))
-    time.sleep(0.10)
+    mouse.position = (int(target_screen_x), int(target_screen_y))
+    time.sleep(0.05)
     mouse.press(Button.left)
-    time.sleep(0.08)
+    time.sleep(0.05)
     mouse.release(Button.left)
-    time.sleep(0.35)
-
-    # ------------------------------------------------------------------
-    # Step 2 pixel-perfect the aim with the mouse wheel.
-    #
-    # The previous implementation tried to detect the cue guideline while
-    # our overlay's grey prediction guideline was drawn ON TOP of it.  The
-    # white in-game line ended up hidden beneath the grey overlay line, so
-    # vision saw nothing and never sent any wheel ticks.
-    #
-    # The fix: before each measurement we momentarily drop the overlay's
-    # opacity to 0 (so the screen capture shows ONLY the game's white
-    # cue guideline), measure the angle, then restore the opacity.  The
-    # wheel is then scrolled by the number of ticks implied by the residual
-    # angular error, with a sign tied to the in-game wheel direction.
-    # ------------------------------------------------------------------
-    # Calibrated empirically on 8 Ball Pool: one wheel detent rotates the
-    # cue guideline by ~0.0035 rad (~0.20 deg).  We use it as the base
-    # conversion factor between angular error and wheel ticks.
-    rad_per_tick = 0.0035
-    # Hard cap on ticks per iteration so we don't blow past the target.
-    max_ticks_per_iter = 40
-    # Stop once the residual is below this (sub-half-degree) the game's
-    # own rendering quantises the guideline at roughly this scale anyway.
-    target_tolerance_rad = 0.0010
-    max_iterations = 10
-
-    mouse.position = (int(aim_wheel[0]), int(aim_wheel[1]))
-    time.sleep(0.12)
-    mouse.press(Button.left)
-    try:
-        prev_abs_error = None
-        converged = False
-        for iteration in range(max_iterations):
-            measured = _measure_game_aim_angle((cue_x, cue_y), hide_overlay=True)
-            if measured is None:
-                # No guideline visible the in-game line might be
-                # momentarily washed out.  Try one more time after a brief
-                # wait before giving up; this is rare but worth recovering
-                # from because the rest of the loop is cheap.
-                time.sleep(0.12)
-                measured = _measure_game_aim_angle((cue_x, cue_y), hide_overlay=True)
-            if measured is None:
-                print('Auto-aim: guideline not visible after snapping; keeping current aim.')
-                break
-
-            angular_error = _normalise_angle(desired_angle - measured['angle'])
-            abs_error = abs(angular_error)
-            # Perpendicular pixel error at the visible guideline endpoint
-            # the quantity that actually matters for the shot's geometry.
-            endpoint = measured['endpoint']
-            perp_px = abs((endpoint[0] - cue_x) * math.sin(desired_angle)
-                          - (endpoint[1] - cue_y) * math.cos(desired_angle))
-            print(f'Auto-aim iter {iteration}: measured={math.degrees(measured["angle"]):.3f} deg '
-                  f'err={math.degrees(angular_error):+.3f} deg, perp={perp_px:.2f}px.')
-
-            if abs_error <= target_tolerance_rad or perp_px <= 1.5:
-                print(f'Auto-aim: converged (err {math.degrees(abs_error):.4f} deg, {perp_px:.2f}px).')
-                converged = True
-                break
-
-            # Prevent overshoot: if the previous iteration's tick count did
-            # not reduce the error, halve the step.  This damps oscillation
-            # near the target where one tick already exceeds the residual.
-            if prev_abs_error is not None and abs_error >= prev_abs_error:
-                step_factor = 0.5
-            else:
-                # Round to nearest tick, but always send at least one so we
-                # make progress every iteration.
-                step_factor = 1.0
-            ticks = max(1, int(round(abs_error / rad_per_tick * step_factor)))
-            ticks = min(ticks, max_ticks_per_iter)
-
-            # In atan2 terms, clock-wise screen rotation = increasing angle.
-            # The game maps a downward wheel scroll to that clockwise/right
-            # motion; upward is the inverse.  So a positive angular_error
-            # (measured < desired) means we need to rotate the cue right ->
-            # scroll down (direction = -1 in pynput's dy convention).
-            direction = -1 if angular_error > 0 else 1
-            for _ in range(ticks):
-                mouse.scroll(0, direction)
-                time.sleep(0.020)
-            # Let the in-game cue animation settle to the new angle before
-            # measuring again.  80 ms is ~5 frames, enough for the cue to
-            # rotate without lagging the measurement.
-            time.sleep(0.10)
-            prev_abs_error = abs_error
-
-        if not converged:
-            print('Auto-aim: reached iteration limit; best-effort aim retained.')
-    finally:
-        mouse.release(Button.left)
-        mouse.position = orig_pos
 
 def auto_shoot():
     start_coord = getattr(ml, 'power_indicator_start', [0.0, 0.0])
@@ -959,7 +727,7 @@ def auto_shoot():
             mouse.position = (int(round(curr_x)), int(round(curr_y)))
             time.sleep(frame_sleep)
 
-    ramp_frames = 10
+    ramp_frames = 5
     ease_move(start_coord[0], start_coord[1], target_x, target_y, ramp_frames)
 
     # Pull-back nudge: once the cursor reaches the target, smoothly retreat
@@ -972,15 +740,15 @@ def auto_shoot():
     # same way as the initial pull so the cursor never jerks/teleports.
     retreat_x = target_x - dx * 0.01
     retreat_y = target_y - dy * 0.01
-    nudge_frames = 5
+    nudge_frames = 3
     ease_move(target_x, target_y, retreat_x, retreat_y, nudge_frames, frame_sleep=0.1)
     ease_move(retreat_x, retreat_y, target_x, target_y, nudge_frames, frame_sleep=0.1)
 
-    for _ in range(10):
+    for _ in range(5):
         mouse.position = (int(round(target_x)), int(round(target_y)))
         time.sleep(0.03)
 
-    time.sleep(0.15)
+    time.sleep(0.1)
     mouse.release(Button.left)
 
 def close_():
@@ -1101,7 +869,6 @@ def open_cue_settings_window():
     global slider_cue_length
     global _cue_ind_btn_var
     global _cue_end_coord_var
-    global _aim_indicator_coord_var
     global cue_settings_window
     global slider_cue_length_var
     global slider_cue_start
@@ -1223,8 +990,6 @@ def open_cue_settings_window():
                             ml.power_indicator_start = pos
                         elif which == 'end':
                             ml.power_indicator_end = pos
-                        else:
-                            ml.aim_indicator_position = pos
                         coord_var.set(_fmt_pos(pos))
                         ml.need_update_draws = True
                 if cue_settings_window is not None and cue_settings_window.winfo_exists():
@@ -1253,16 +1018,6 @@ def open_cue_settings_window():
         ctk.CTkLabel(end_row, textvariable=_cue_end_coord_var, text_color=ACCENT2, font=ctk.CTkFont('Consolas', 12), width=120, anchor='e').pack(side='left', padx=8)
         _pick_end_btn = ctk.CTkButton(end_row, text='Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
         _pick_end_btn.configure(command=lambda: _start_crosshair_pick('end', _cue_end_coord_var, _pick_end_btn))
-        _pick_end_btn.pack(side='right')
-        ctk.CTkFrame(frame, fg_color=BORDER, height=1).pack(fill='x', padx=5, pady=(5, 6))
-        aim_row = ctk.CTkFrame(frame, fg_color='transparent')
-        aim_row.pack(fill='x', padx=5, pady=(0, 4))
-        ctk.CTkLabel(aim_row, text='Aim Wheel Position', text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12)).pack(side='left')
-        _aim_indicator_coord_var = tk.StringVar(value=_fmt_pos(getattr(ml, 'aim_indicator_position', None)))
-        ctk.CTkLabel(aim_row, textvariable=_aim_indicator_coord_var, text_color=ACCENT2, font=ctk.CTkFont('Consolas', 12), width=120, anchor='e').pack(side='left', padx=8)
-        _pick_aim_btn = ctk.CTkButton(aim_row, text='Pick', width=80, height=28, corner_radius=6, fg_color=BG3, hover_color=BORDER, text_color=TEXT, font=ctk.CTkFont('Segoe UI', 12))
-        _pick_aim_btn.configure(command=lambda: _start_crosshair_pick('aim', _aim_indicator_coord_var, _pick_aim_btn))
-        _pick_aim_btn.pack(side='right')
         def on_close():
             global cue_settings_window
             cue_settings_window.destroy()
@@ -1467,7 +1222,7 @@ def create_buttons_window():
 if __name__ == '__main__':
     pass
 else:
-    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'aim_indicator_position': [0.0, 0.0], 'indicate_power': False, 'indirect_black': False, 'indirect_all': False, 'display_mode': 'laptop'}
+    _default_data = {'table_left': 200, 'table_top': 150, 'table_width': 900, 'table_height': 500, 'ct': 2, 'lt': 2, 'tr': 10, 'power_cue': 0.5, 'show_table_bounds': True, 'lock_table_geo': False, 'game_version': 0, 'transparency': 0.286, 'save': '', 'cue_force_green': 5, 'cue_force_purple': 3, 'keybinds': default_keybinds, 'mouse_scroll_mode': 'on', 'mouse_scroll_sensitivity_power': 0.4, 'mouse_scroll_sensitivity_direction': 0.2, 'cue_length_scaler': 1, 'cue_start_scaler': 1, 'power_indicator_start': [0.0, 0.0], 'power_indicator_end': [0.0, 0.0], 'indicate_power': False, 'indirect_black': False, 'indirect_all': False, 'display_mode': 'laptop'}
     ml.display_mode = 'laptop'
     save_data_name = _save_filename_for_mode('laptop')
 
@@ -1506,7 +1261,6 @@ else:
     ml.cue_start_scaler = data.get('cue_start_scaler', 1)
     ml.power_indicator_start = data.get('power_indicator_start', [0.0, 0.0])
     ml.power_indicator_end = data.get('power_indicator_end', [0.0, 0.0])
-    ml.aim_indicator_position = data.get('aim_indicator_position', [0.0, 0.0])
     ml.indicate_power = data.get('indicate_power', False)
     ml.indirect_black = data.get('indirect_black', False)
     ml.indirect_all = data.get('indirect_all', False)

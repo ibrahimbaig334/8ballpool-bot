@@ -59,7 +59,6 @@ prediction_angle = 0
 predictions = None
 power_indicator_start = 1000
 power_indicator_end = 1000
-aim_indicator_position = [0.0, 0.0]
 indicate_power = False
 indirect_black = False
 indirect_all   = False
