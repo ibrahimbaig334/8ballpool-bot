@@ -740,7 +740,7 @@ def auto_shoot():
     # same way as the initial pull so the cursor never jerks/teleports.
     retreat_x = target_x - dx * 0.01
     retreat_y = target_y - dy * 0.01
-    nudge_frames = 3
+    nudge_frames = 5
     ease_move(target_x, target_y, retreat_x, retreat_y, nudge_frames, frame_sleep=0.1)
     ease_move(retreat_x, retreat_y, target_x, target_y, nudge_frames, frame_sleep=0.1)
 
