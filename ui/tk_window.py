@@ -685,8 +685,16 @@ def auto_aim():
         return
 
     first_touch_canvas = cue_path[1]
-    target_screen_x = ml.table_left + first_touch_canvas[0]
-    target_screen_y = ml.table_top + first_touch_canvas[1]
+    center_x = ml.table_left + first_touch_canvas[0]
+    center_y = ml.table_top + first_touch_canvas[1]
+
+    # Offset: 5% to the right (+X) and 10% below (+Y) relative to ball radius
+    offset_x = ml.ball_radius * 0.05
+    offset_y = ml.ball_radius * 0.13
+
+    target_screen_x = center_x + offset_x
+    target_screen_y = center_y + offset_y
+
     mouse = Controller()
     mouse.position = (int(target_screen_x), int(target_screen_y))
     time.sleep(0.05)
